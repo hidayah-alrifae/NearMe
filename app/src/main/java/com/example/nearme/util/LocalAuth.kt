@@ -44,8 +44,7 @@ object LocalAuth {
      */
     fun getDisplayName(context: Context): String {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        return prefs.getString(KEY_DISPLAY_NAME, "User#${getShortId(context)}") ?: "User"
-    }
+        return prefs.getString(KEY_DISPLAY_NAME, "User") ?: "User"    }
 
     /**
      * Saves a new display name chosen by the user.

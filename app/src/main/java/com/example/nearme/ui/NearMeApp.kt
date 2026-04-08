@@ -36,7 +36,6 @@ fun NearMeApp() {
         // Second screen: show nearby users (coming soon)
         composable("discovery") {
             // Placeholder — we'll build DiscoveryScreen next
-            androidx.compose.material3.Text("Discovery Screen - Coming Soon")
-        }
+            DiscoveryScreen()        }
     }
 }
