@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.nearme.model.UserProfile
+import androidx.compose.foundation.clickable
 
 /**
  * Discovery screen — shows a list of nearby users
@@ -19,7 +20,8 @@ import com.example.nearme.model.UserProfile
  * as users appear and disappear.
  */
 @Composable
-fun DiscoveryScreen(viewModel: DiscoveryViewModel = viewModel()) {
+fun DiscoveryScreen(viewModel: DiscoveryViewModel = viewModel(),
+                    onUserClick: (String, String) -> Unit = { _, _ -> }) {
 
     // Collect the list of nearby users from the ViewModel
     val nearbyUsers by viewModel.nearbyUsers.collectAsState()
@@ -74,7 +76,7 @@ fun DiscoveryScreen(viewModel: DiscoveryViewModel = viewModel()) {
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 items(nearbyUsers) { user ->
-                    UserCard(user)
+                    UserCard(user, onUserClick)
                 }
             }
         }
@@ -86,9 +88,11 @@ fun DiscoveryScreen(viewModel: DiscoveryViewModel = viewModel()) {
  * Displays their name, short ID, status, and signal strength.
  */
 @Composable
-fun UserCard(user: UserProfile) {
+fun UserCard(user: UserProfile, onUserClick: (String, String) -> Unit) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onUserClick(user.shortId, user.displayName) },
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Row(

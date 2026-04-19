@@ -1,4 +1,5 @@
 package com.example.nearme.ui
+import androidx.lifecycle.viewmodel.compose.viewModel
 
 
 
@@ -33,9 +34,27 @@ fun NearMeApp() {
             )
         }
 
-        // Second screen: show nearby users (coming soon)
-        composable("discovery") {
-            // Placeholder — we'll build DiscoveryScreen next
-            DiscoveryScreen()        }
-    }
-}
+        // Second screen: show nearby users
+        composable(route = "discovery") {
+            DiscoveryScreen(
+                onUserClick = { shortId, displayName ->
+                    navController.navigate("chat/$shortId/$displayName")
+                }
+            )
+        }
+
+        // Third screen: chat with a user
+        composable(route = "chat/{shortId}/{displayName}") { backStackEntry ->
+            val shortId = backStackEntry.arguments?.getString("shortId") ?: ""
+            val displayName = backStackEntry.arguments?.getString("displayName") ?: ""
+            val chatViewModel: ChatViewModel = viewModel()
+            LaunchedEffect(shortId) {
+                chatViewModel.startChat(shortId, shortId)
+            }
+
+            ChatScreen(
+                viewModel = chatViewModel,
+                contactName = displayName
+            )
+        }
+}}
