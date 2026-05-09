@@ -2,8 +2,6 @@ package com.example.nearme.model
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
-import java.util.TimeZone
-
 @Entity(tableName = "messages")
 data class Message (
     //a unique number for each message (so the database can identify it)
@@ -16,12 +14,15 @@ data class Message (
     //who sent it
     val senderName: String,
 
-   //the actual text
+    //the actual text
     val content: String,
 
     //when it was sent
     val timestamp : Long = System.currentTimeMillis() ,
 
     //did I send this, or did the other person send it?
-    val isFromMe: Boolean = true
+    val isFromMe: Boolean = true,
+
+    //was this message actually delivered to the other phone?
+    val isSent: Boolean = true
 )

@@ -49,7 +49,7 @@ fun NearMeApp() {
             val displayName = backStackEntry.arguments?.getString("displayName") ?: ""
             val chatViewModel: ChatViewModel = viewModel()
             LaunchedEffect(shortId) {
-                chatViewModel.startChat(shortId, shortId)
+                chatViewModel.startChat(shortId)
             }
 
             ChatScreen(

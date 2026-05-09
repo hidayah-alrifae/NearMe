@@ -13,46 +13,69 @@ import kotlinx.coroutines.launch
 
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
-    // the database  to save and load messages
+    // the database — to save and load messages
     private val messageDao = AppDatabase.getInstance(application).messageDao()
 
     // the user's own name and shortId
     private val displayName = LocalAuth.getDisplayName(application)
     private val shortId = LocalAuth.getShortId(application)
 
-    // the messages shown on screen  Flow so UI updates automatically
+    // the messages shown on screen — Flow so UI updates automatically
     private val _messages = MutableStateFlow<List<Message>>(emptyList())
     val messages: StateFlow<List<Message>> = _messages
 
-    // who we're chatting with  their endpointId from Nearby Connections
+    // who we're chatting with — their endpointId from Nearby Connections
+    // starts null — gets set only when onConnected fires with the REAL endpoint
     private var currentEndpointId: String? = null
 
-    // who we're chatting with  their shortId (used as conversationId in database)
+    // who we're chatting with — their shortId (used as conversationId in database)
     private var currentConversationId: String? = null
 
-    // NearbyManager  handles connection and sending/receiving
-    // when a message arrives, it saves it to database and updates the screen
-    private val nearbyManager = NearbyManager(application, { endpointId, messageText ->
-        viewModelScope.launch {
-            val message = Message(
-                conversationId = currentConversationId ?: endpointId,
-                senderName = "Other",
-                content = messageText,
-                isFromMe = false
-            )
-            messageDao.insertMessage(message)
+    // NearbyManager — handles connection and sending/receiving
+    private val nearbyManager: NearbyManager = NearbyManager(application,
+
+        // onMessageReceived: a message arrived from the other phone
+        { endpointId, messageText ->
+            viewModelScope.launch {
+                val message = Message(
+                    conversationId = currentConversationId ?: endpointId,
+                    senderName = "Other",
+                    content = messageText,
+                    isFromMe = false
+                )
+                messageDao.insertMessage(message)
+            }
+        },
+
+        // onConnected: NC connection established — send any unsent messages from database
+        { endpointId ->
+            viewModelScope.launch {
+                currentEndpointId = endpointId
+                val conversationId = currentConversationId ?: return@launch
+                val unsent = messageDao.getUnsentMessages(conversationId)
+                unsent.forEach { msg ->
+                    nearbyManager.sendMessage(endpointId, msg.content)
+                    messageDao.markAsSent(msg.id)
+                }
+            }
+        },
+
+        // onDisconnected: connection lost — clear endpoint and restart to reconnect
+        {
+            viewModelScope.launch {
+                currentEndpointId = null
+                nearbyManager.startAdvertising(displayName)
+                nearbyManager.startDiscovery()
+            }
         }
-    }, { endpointId ->
-        // connection established  save the REAL endpointId
-        currentEndpointId = endpointId
-    })
+    )
 
-    // opens a chat  loads messages from database and starts listening for new ones
-    fun startChat(conversationId: String, endpointId: String) {
+    // opens a chat — loads messages from database and starts NC
+    fun startChat(conversationId: String) {
         currentConversationId = conversationId
-        currentEndpointId = endpointId
+        // currentEndpointId stays null — onConnected will set the REAL one
 
-        // start Nearby Connections  advertise and discover to find the other phone
+        // start Nearby Connections — advertise and discover to find the other phone
         nearbyManager.startAdvertising(displayName)
         nearbyManager.startDiscovery()
 
@@ -64,21 +87,30 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    // sends a message  saves to database and sends through Nearby Connections
+    // sends a message — saves to database immediately, sends or marks unsent
     fun sendMessage(text: String) {
-        val endpointId = currentEndpointId ?: return
         val conversationId = currentConversationId ?: return
 
+        val endpointId = currentEndpointId
+        val connected = endpointId != null
+
+        // save to database — isSent depends on whether we're connected right now
         val message = Message(
             conversationId = conversationId,
             senderName = displayName,
             content = text,
-            isFromMe = true
+            isFromMe = true,
+            isSent = connected
         )
 
         viewModelScope.launch {
             messageDao.insertMessage(message)
-            nearbyManager.sendMessage(endpointId, text)
+        }
+
+        // if connected, send now — if not, it stays in database as unsent
+        // and will be picked up by onConnected when the connection is restored
+        if (connected) {
+            nearbyManager.sendMessage(endpointId!!, text)
         }
     }
 
@@ -87,5 +119,4 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         super.onCleared()
         nearbyManager.stopAllConnections()
     }
-
 }

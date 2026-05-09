@@ -16,6 +16,14 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE conversationId = :conversationId ORDER BY timestamp ASC")
     fun getMessages(conversationId: String): Flow<List<Message>>
 
+    // gets messages that were saved but never delivered to the other phone
+    @Query("SELECT * FROM messages WHERE conversationId = :conversationId AND isFromMe = 1 AND isSent = 0 ORDER BY timestamp ASC")
+    suspend fun getUnsentMessages(conversationId: String): List<Message>
+
+    // marks a message as delivered after it's been sent successfully
+    @Query("UPDATE messages SET isSent = 1 WHERE id = :messageId")
+    suspend fun markAsSent(messageId: String)
+
     // deletes all messages in a specific conversation
     @Query("DELETE FROM messages WHERE conversationId = :conversationId")
     suspend fun deleteConversation(conversationId: String)
