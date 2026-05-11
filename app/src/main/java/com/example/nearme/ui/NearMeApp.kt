@@ -7,6 +7,8 @@ import androidx.compose.runtime.*
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.compose.ui.platform.LocalContext
+import com.example.nearme.service.NearMeService
 
 /**
  * Main navigation controller for the app.
@@ -15,6 +17,7 @@ import androidx.navigation.compose.rememberNavController
  */
 @Composable
 fun NearMeApp() {
+    val context = LocalContext.current
 
     val navController = rememberNavController()
 
@@ -26,8 +29,12 @@ fun NearMeApp() {
         composable("permission") {
             PermissionScreen(
                 onPermissionsGranted = {
+                    NearMeService.start(context)
+                    // Start the foreground service  kicks off BLE + NC radios.
+                    // Runs in background even when screen is off or user switches apps.
+                    com.example.nearme.service.NearMeService.start(context)
+
                     navController.navigate("discovery") {
-                        // Remove permission screen from back stack
                         popUpTo("permission") { inclusive = true }
                     }
                 }

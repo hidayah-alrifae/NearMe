@@ -5,118 +5,112 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.nearme.data.AppDatabase
 import com.example.nearme.model.Message
-import com.example.nearme.nearby.NearbyManager
+import com.example.nearme.repository.NearMeRepository
 import com.example.nearme.util.LocalAuth
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
+/**
+ * ChatViewModel manages the active chat session.
+ * It does NOT own NearbyManager — the repository does.
+ * It talks to the repository for NC operations and to
+ * MessageDao for database operations.
+ */
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
-    // the database — to save and load messages
+    // Database access for saving and loading messages
     private val messageDao = AppDatabase.getInstance(application).messageDao()
 
-    // the user's own name and shortId
+    // This device's display name (shown as sender on outgoing messages)
     private val displayName = LocalAuth.getDisplayName(application)
+
+    // This device's shortId
     private val shortId = LocalAuth.getShortId(application)
 
-    // the messages shown on screen — Flow so UI updates automatically
+    // The singleton repository — same instance the service uses
+    private val repository = NearMeRepository.getInstance(application)
+
+    // Live message list — UI collects this and redraws automatically
     private val _messages = MutableStateFlow<List<Message>>(emptyList())
     val messages: StateFlow<List<Message>> = _messages
 
-    // who we're chatting with — their endpointId from Nearby Connections
-    // starts null — gets set only when onConnected fires with the REAL endpoint
+    // NC endpoint ID — set when the connection is established via SharedFlow
     private var currentEndpointId: String? = null
 
-    // who we're chatting with — their shortId (used as conversationId in database)
+    // The other person's shortId — used as the Room database key
     private var currentConversationId: String? = null
 
-    // NearbyManager — handles connection and sending/receiving
-    private val nearbyManager: NearbyManager = NearbyManager(application,
-
-        // onMessageReceived: a message arrived from the other phone
-        { endpointId, messageText ->
-            viewModelScope.launch {
-                val message = Message(
-                    conversationId = currentConversationId ?: endpointId,
-                    senderName = "Other",
-                    content = messageText,
-                    isFromMe = false
-                )
-                messageDao.insertMessage(message)
-            }
-        },
-
-        // onConnected: NC connection established — send any unsent messages from database
-        { endpointId ->
-            viewModelScope.launch {
-                currentEndpointId = endpointId
-                val conversationId = currentConversationId ?: return@launch
-                val unsent = messageDao.getUnsentMessages(conversationId)
-                unsent.forEach { msg ->
-                    nearbyManager.sendMessage(endpointId, msg.content)
-                    messageDao.markAsSent(msg.id)
-                }
-            }
-        },
-
-        // onDisconnected: connection lost — clear endpoint and restart to reconnect
-        {
-            viewModelScope.launch {
-                currentEndpointId = null
-                nearbyManager.startAdvertising(displayName)
-                nearbyManager.startDiscovery()
-            }
-        }
-    )
-
-    // opens a chat — loads messages from database and starts NC
+    /**
+     * Opens a chat session with the given user.
+     * - Tells repository this conversation is active (suppresses notifications)
+     * - Asks repository to start NC discovery targeting this shortId
+     * - Starts collecting messages from Room
+     * - Starts collecting the connected endpointId from repository
+     */
     fun startChat(conversationId: String) {
         currentConversationId = conversationId
-        // currentEndpointId stays null — onConnected will set the REAL one
 
-        // start Nearby Connections — advertise and discover to find the other phone
-        nearbyManager.startAdvertising(displayName)
-        nearbyManager.startDiscovery()
+        // Tell repository which conversation is open — incoming messages
+        // from this sender won't trigger notifications
+        repository.setActiveConversation(conversationId)
 
-        // load messages from database
+        // Start NC discovery — repository will look for this shortId
+        repository.connectToUser(conversationId)
+
+        // Collect messages from Room database — updates UI automatically
         viewModelScope.launch {
             messageDao.getMessages(conversationId).collect { messageList ->
                 _messages.value = messageList
             }
         }
+
+        // Collect the connected endpointId from repository —
+        // this fires when NC connection succeeds on either side
+        viewModelScope.launch {
+            repository.connectedEndpointId.collect { endpointId ->
+                currentEndpointId = endpointId
+            }
+        }
     }
 
-    // sends a message — saves to database immediately, sends or marks unsent
+    /**
+     * Sends a message to the connected peer.
+     * Silently returns if NC hasn't connected yet (endpointId is null).
+     * Saves to Room first (so it appears in UI), then sends via NC.
+     */
     fun sendMessage(text: String) {
+        val endpointId = currentEndpointId ?: return
         val conversationId = currentConversationId ?: return
 
-        val endpointId = currentEndpointId
-        val connected = endpointId != null
-
-        // save to database — isSent depends on whether we're connected right now
         val message = Message(
             conversationId = conversationId,
             senderName = displayName,
             content = text,
-            isFromMe = true,
-            isSent = connected
+            isFromMe = true
         )
 
         viewModelScope.launch {
+            // Save locally first — UI updates immediately via Room Flow
             messageDao.insertMessage(message)
-        }
-
-        // if connected, send now — if not, it stays in database as unsent
-        // and will be picked up by onConnected when the connection is restored
-        if (connected) {
-            nearbyManager.sendMessage(endpointId!!, text)
+            // Then send over NC to the other device
+            repository.sendNcMessage(endpointId, text)
         }
     }
 
-    // clean up when leaving the chat
+    /**
+     * Called when the user leaves the chat screen.
+     * Clears active conversation (so future messages trigger notifications)
+     * and disconnects from the NC endpoint.
+     */
     override fun onCleared() {
         super.onCleared()
-        nearbyManager.stopAllConnections()
+        // Clear active conversation — future messages will post notifications
+        repository.setActiveConversation(null)
+        // Disconnect from the peer
+        val endpointId = currentEndpointId
+        if (endpointId != null) {
+            repository.disconnectNc(endpointId)
+        }
     }
 }

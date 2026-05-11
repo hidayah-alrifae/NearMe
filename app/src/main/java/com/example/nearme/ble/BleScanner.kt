@@ -40,7 +40,8 @@ class BleScanner(private val context: Context) {
      * @param onUserFound — called every time a nearby user is detected
      */
     @SuppressLint("MissingPermission")
-    fun startScanning(onUserFound: (UserProfile) -> Unit) {
+    // scanMode: "LOW_POWER" for background (battery friendly), "LOW_LATENCY" for foreground (fast)
+    fun startScanning(scanMode: String = "LOW_LATENCY", onUserFound: (UserProfile) -> Unit) {
 
         this.onUserFound = onUserFound
 
@@ -74,11 +75,16 @@ class BleScanner(private val context: Context) {
             .setServiceUuid(ParcelUuid(BleAdvertiser.NEARME_SERVICE_UUID))
             .build()
 
-        // --- Build scan settings ---
+
+        // Pick the scan mode based on the parameter passed in
+        val mode = if (scanMode == "LOW_POWER") {
+            ScanSettings.SCAN_MODE_LOW_POWER   // Background: scan less often, save battery
+        } else {
+            ScanSettings.SCAN_MODE_LOW_LATENCY // Foreground: scan frequently, fast discovery
+        }
+
         val settings = ScanSettings.Builder()
-            // LOW_LATENCY = scan frequently for fast discovery
-            .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
-            // Report each device every time it's detected (not just once)
+            .setScanMode(mode)
             .setCallbackType(ScanSettings.CALLBACK_TYPE_ALL_MATCHES)
             .build()
 
