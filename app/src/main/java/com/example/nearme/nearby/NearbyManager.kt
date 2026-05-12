@@ -122,6 +122,21 @@ class NearbyManager(private val context: Context) {
     fun getShortIdForEndpoint(endpointId: String): String? {
         return connectedEndpoints[endpointId]
     }
+    /**
+     * Check if we already have an active connection to this shortId.
+     * Prevents starting discovery for someone we're already chatting with.
+     */
+    fun isConnectedTo(shortId: String): Boolean {
+        return connectedEndpoints.containsValue(shortId)
+    }
+
+    /**
+     * Get the endpointId for an already-connected shortId.
+     * Returns null if not connected.
+     */
+    fun getEndpointForShortId(shortId: String): String? {
+        return connectedEndpoints.entries.firstOrNull { it.value == shortId }?.key
+    }
 
     /**
      * Discovery callback — only connects to the target shortId.

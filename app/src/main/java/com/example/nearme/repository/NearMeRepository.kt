@@ -160,19 +160,20 @@ class NearMeRepository(private val context: Context) {
         // reach the repository even when the app is in the background
         nearbyManager.onMessageReceived = { endpointId, messageText ->
             val senderShortId = nearbyManager.getShortIdForEndpoint(endpointId) ?: "unknown"
-            val message = Message(
-                conversationId = senderShortId,
-                senderName = senderShortId,
-                content = messageText,
-                isFromMe = false
-            )
             repositoryScope.launch {
+                val message = Message(
+                    conversationId = senderShortId,
+                    senderName = senderShortId,
+                    content = messageText,
+                    isFromMe = false
+                )
                 messageDao.insertMessage(message)
+                // Now this check runs on Main thread  same thread that writes activeConversationId
+                if (activeConversationId != senderShortId) {
+                    postMessageNotification(senderShortId, messageText)
+                }
             }
-            if (activeConversationId != senderShortId) {
-                postMessageNotification(senderShortId, messageText)
-            }
-            android.util.Log.d("REPO", "Message saved from $senderShortId: $messageText")
+            android.util.Log.d("REPO", "Message received from $senderShortId: $messageText")
         }
 
         nearbyManager.onConnected = { endpointId ->
@@ -202,6 +203,18 @@ class NearMeRepository(private val context: Context) {
     // Called by ChatViewModel when user taps a person to start chatting.
 // Starts NC discovery filtered to only connect to that specific person.
     fun connectToUser(targetShortId: String) {
+        // If already connected, just re-emit the endpointId — no new discovery needed
+        if (nearbyManager.isConnectedTo(targetShortId)) {
+            val existingEndpointId = nearbyManager.getEndpointForShortId(targetShortId)
+            if (existingEndpointId != null) {
+                _radioState.value = RadioState.NC_CHAT
+                repositoryScope.launch {
+                    _connectedEndpointId.emit(existingEndpointId)
+                }
+            }
+            return
+        }
+        // Not connected yet — start discovery to find and connect
         _radioState.value = RadioState.NC_CHAT
         nearbyManager.startDiscoveryForTarget(targetShortId)
     }

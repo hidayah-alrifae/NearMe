@@ -30,10 +30,6 @@ fun NearMeApp() {
             PermissionScreen(
                 onPermissionsGranted = {
                     NearMeService.start(context)
-                    // Start the foreground service  kicks off BLE + NC radios.
-                    // Runs in background even when screen is off or user switches apps.
-                    com.example.nearme.service.NearMeService.start(context)
-
                     navController.navigate("discovery") {
                         popUpTo("permission") { inclusive = true }
                     }

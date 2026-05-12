@@ -23,6 +23,24 @@ fun ChatScreen(
 
     // get the messages list from the ViewModel
     val messages by viewModel.messages.collectAsState()
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+            if (event == androidx.lifecycle.Lifecycle.Event.ON_PAUSE) {
+                // App went to background or user navigated away —
+                // clear active conversation so notifications resume
+                viewModel.clearActiveConversation()
+            } else if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
+                // User came back — suppress notifications again
+                viewModel.restoreActiveConversation()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
 
@@ -85,6 +103,7 @@ fun MessageBubble(message: Message) {
     val alignment = if (message.isFromMe) Alignment.End else Alignment.Start
     val color = if (message.isFromMe) Color(0xFF2196F3) else Color(0xFFE0E0E0)
     val textColor = if (message.isFromMe) Color.White else Color.Black
+
 
     Column(
         modifier = Modifier

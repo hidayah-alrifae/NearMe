@@ -107,10 +107,19 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         super.onCleared()
         // Clear active conversation — future messages will post notifications
         repository.setActiveConversation(null)
-        // Disconnect from the peer
-        val endpointId = currentEndpointId
-        if (endpointId != null) {
-            repository.disconnectNc(endpointId)
+        // Do NOT disconnect — the connection stays alive in the service layer
+        // so messages can still arrive and trigger notifications
+    }
+
+    fun clearActiveConversation() {
+        repository.setActiveConversation(null)
+    }
+
+    fun restoreActiveConversation() {
+        val convId = currentConversationId
+        if (convId != null) {
+            repository.setActiveConversation(convId)
         }
     }
+
 }
