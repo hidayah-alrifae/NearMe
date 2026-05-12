@@ -73,6 +73,8 @@ class NearbyManager(private val context: Context) {
      * This prevents connecting to random nearby NC devices.
      */
     fun startDiscoveryForTarget(shortId: String) {
+        android.util.Log.d("NC_MGR", "Starting discovery for: $shortId")
+
         targetShortId = shortId
         val options = DiscoveryOptions.Builder()
             .setStrategy(Strategy.P2P_CLUSTER)
@@ -86,6 +88,7 @@ class NearbyManager(private val context: Context) {
         connectionsClient.stopDiscovery()
         targetShortId = null
     }
+
 
     /**
      * Send a text message to a connected peer.
@@ -122,6 +125,7 @@ class NearbyManager(private val context: Context) {
     fun getShortIdForEndpoint(endpointId: String): String? {
         return connectedEndpoints[endpointId]
     }
+
     /**
      * Check if we already have an active connection to this shortId.
      * Prevents starting discovery for someone we're already chatting with.
@@ -146,6 +150,8 @@ class NearbyManager(private val context: Context) {
         override fun onEndpointFound(endpointId: String, info: DiscoveredEndpointInfo) {
             // Extract shortId from broadcast name "3fa7|Ahmed" → "3fa7"
             val foundShortId = info.endpointName.substringBefore("|")
+            android.util.Log.d("NC_MGR", "Found endpoint: $foundShortId, target: $targetShortId")
+
             val target = targetShortId
             if (target != null && foundShortId == target) {
                 // Found our target — request connection
@@ -174,16 +180,14 @@ class NearbyManager(private val context: Context) {
         }
         override fun onConnectionResult(endpointId: String, result: ConnectionResolution) {
             if (result.status.isSuccess) {
-                // Connection succeeded — promote from pending to connected
                 val shortId = pendingConnections.remove(endpointId) ?: "unknown"
                 connectedEndpoints[endpointId] = shortId
-                // Stop discovery — we found who we were looking for
                 stopDiscovery()
-                // Notify repository so it can emit on SharedFlow
+
                 onConnected?.invoke(endpointId)
             } else {
-                // Connection failed — clean up pending
                 pendingConnections.remove(endpointId)
+
             }
         }
         override fun onDisconnected(endpointId: String) {

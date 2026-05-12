@@ -41,6 +41,9 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     // The other person's shortId — used as the Room database key
     private var currentConversationId: String? = null
 
+    private val _isConnected = MutableStateFlow(false)
+    val isConnected: StateFlow<Boolean> = _isConnected
+
     /**
      * Opens a chat session with the given user.
      * - Tells repository this conversation is active (suppresses notifications)
@@ -70,6 +73,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             repository.connectedEndpointId.collect { endpointId ->
                 currentEndpointId = endpointId
+                _isConnected.value = true
             }
         }
     }

@@ -150,7 +150,7 @@ class BleScanner(private val context: Context) {
             val statusByte = data[0]
             val status = when (statusByte.toInt()) {
                 0 -> "Available"
-                1 -> "Busy"
+                1 -> "Calling"
                 2 -> "Emergency"
                 else -> "Available"
             }

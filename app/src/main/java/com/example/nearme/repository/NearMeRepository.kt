@@ -132,10 +132,12 @@ class NearMeRepository(private val context: Context) {
         // Start scanning in LOW_POWER mode — battery friendly for always-on background use
         // LOW_POWER scans less frequently than LOW_LATENCY but uses far less battery
         bleScanner.startScanning(scanMode = "LOW_POWER") { userProfile ->
-            // A nearby user was found — add or update in the map
             usersMap[userProfile.shortId] = userProfile
-            // Push the updated list to all observers (DiscoveryViewModel, UI)
             _discoveredUsers.value = usersMap.values.toList()
+            // If someone is calling us, start NC discovery for them too
+            if (userProfile.status == "Calling") {
+                nearbyManager.startDiscoveryForTarget(userProfile.shortId)
+            }
         }
 
         // Start the stale user cleanup job
@@ -178,6 +180,10 @@ class NearMeRepository(private val context: Context) {
 
         nearbyManager.onConnected = { endpointId ->
             android.util.Log.d("REPO", "NC connected: $endpointId")
+            // Reset BLE advertisement back to Available
+            val shortId = LocalAuth.getShortId(context)
+            val displayName = LocalAuth.getDisplayName(context)
+            bleAdvertiser.startAdvertising(shortId, displayName, STATUS_AVAILABLE)
             repositoryScope.launch {
                 _connectedEndpointId.emit(endpointId)
             }
@@ -203,19 +209,12 @@ class NearMeRepository(private val context: Context) {
     // Called by ChatViewModel when user taps a person to start chatting.
 // Starts NC discovery filtered to only connect to that specific person.
     fun connectToUser(targetShortId: String) {
-        // If already connected, just re-emit the endpointId — no new discovery needed
-        if (nearbyManager.isConnectedTo(targetShortId)) {
-            val existingEndpointId = nearbyManager.getEndpointForShortId(targetShortId)
-            if (existingEndpointId != null) {
-                _radioState.value = RadioState.NC_CHAT
-                repositoryScope.launch {
-                    _connectedEndpointId.emit(existingEndpointId)
-                }
-            }
-            return
-        }
-        // Not connected yet — start discovery to find and connect
         _radioState.value = RadioState.NC_CHAT
+        // Change BLE advertisement to "Calling" so the other phone
+        // knows to start NC discovery for us
+        val shortId = LocalAuth.getShortId(context)
+        val displayName = LocalAuth.getDisplayName(context)
+        bleAdvertiser.startAdvertising(shortId, displayName, STATUS_CALLING)
         nearbyManager.startDiscoveryForTarget(targetShortId)
     }
 
@@ -278,6 +277,9 @@ class NearMeRepository(private val context: Context) {
     companion object {
         private const val MESSAGE_CHANNEL_ID = "nearme_messages"
         private const val MESSAGE_NOTIFICATION_BASE_ID = 1000
+
+        const val STATUS_AVAILABLE: Byte = 0
+        const val STATUS_CALLING: Byte = 1  // "I want to connect to someone"
 
         @Volatile
         private var INSTANCE: NearMeRepository? = null

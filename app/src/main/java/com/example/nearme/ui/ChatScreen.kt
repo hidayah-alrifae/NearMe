@@ -21,6 +21,8 @@ fun ChatScreen(
     // the text the user is currently typing
     var inputText by remember { mutableStateOf("") }
 
+    val isConnected by viewModel.isConnected.collectAsState()
+
     // get the messages list from the ViewModel
     val messages by viewModel.messages.collectAsState()
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
@@ -86,11 +88,12 @@ fun ChatScreen(
                 onClick = {
                     if (inputText.isNotBlank()) {
                         viewModel.sendMessage(inputText.trim())
-                        inputText = ""  // clear the text field after sending
+                        inputText = ""
                     }
-                }
+                },
+                enabled = isConnected
             ) {
-                Text("Send")
+                Text(if (isConnected) "Send" else "Connecting...")
             }
         }
     }
