@@ -5,8 +5,11 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.bluetooth.BluetoothAdapter
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
@@ -17,22 +20,47 @@ import com.example.nearme.repository.NearMeRepository
 
 class NearMeService : Service() {
 
-    // The repository reference
-    // The service owns this  keeps it alive even when all Activities die
     private lateinit var repository: NearMeRepository
 
-    // Constants
-    companion object {
-        // Channel ID for the persistent "keeping you discoverable" notification
-        private const val CHANNEL_ID = "nearme_discovery"
+    // Listens for Bluetooth being turned off and back on.
+    // When Bluetooth restarts, the BLE adapter resets — our advertisers
+    // and scanners hold stale state and stop working silently.
+    // We fix this by stopping everything and starting fresh when BT comes back.
+    private val bluetoothReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.action != BluetoothAdapter.ACTION_STATE_CHANGED) return
 
-        // Unique ID for the foreground notification Android uses this to
-        // identify and update the notification later if needed
+            val state = intent.getIntExtra(
+                BluetoothAdapter.EXTRA_STATE,
+                BluetoothAdapter.ERROR
+            )
+
+            when (state) {
+                BluetoothAdapter.STATE_OFF -> {
+                    // Bluetooth is turning off — stop everything cleanly
+                    // so we don't hold dead references
+                    android.util.Log.d("SERVICE", "Bluetooth off — stopping BLE and NC")
+                    repository.stopBle()
+                    repository.stopNc()
+                }
+
+                BluetoothAdapter.STATE_ON -> {
+                    // Bluetooth is back on — restart BLE and NC fresh
+                    // Small delay gives the adapter time to fully initialize
+                    android.util.Log.d("SERVICE", "Bluetooth on — restarting BLE and NC")
+                    android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                        repository.startBle()
+                        repository.startNc()
+                    }, 1000) // 1 second delay
+                }
+            }
+        }
+    }
+
+    companion object {
+        private const val CHANNEL_ID = "nearme_discovery"
         private const val NOTIFICATION_ID = 1
 
-        //  Helper to start the service from anywhere in the app
-        // On Android 8+ we must use startForegroundService() instead of
-        // startService(), otherwise the system throws an exception
         fun start(context: Context) {
             val intent = Intent(context, NearMeService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -42,33 +70,19 @@ class NearMeService : Service() {
             }
         }
 
-        // Helper to stop the service
         fun stop(context: Context) {
             context.stopService(Intent(context, NearMeService::class.java))
         }
     }
 
-    //  Service Lifecycle
-
     override fun onCreate() {
         super.onCreate()
 
-        // Get the singleton repository  same instance that ViewModels will use
         repository = NearMeRepository.getInstance(this)
 
-        // Create the notification channel (required Android 8+, safe to call
-        // multiple times  Android ignores duplicates)
         createNotificationChannel()
-
-        // Build the persistent notification
         val notification = buildNotification()
 
-        // Start as foreground  this is the line that tells Android
-        // "don't kill this process." Must be called within 5 seconds
-        // of startForegroundService() or the system throws an ANR.
-        //
-        // Android 10+ requires specifying the foreground service type.
-        // On older versions we use the simpler overload.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(
                 NOTIFICATION_ID,
@@ -79,77 +93,61 @@ class NearMeService : Service() {
             startForeground(NOTIFICATION_ID, notification)
         }
 
-        // Start BLE advertising and scanning via the repository
+        // Register the Bluetooth state receiver
+        // This must be done BEFORE startBle() so we catch any state changes
+        val filter = IntentFilter(BluetoothAdapter.ACTION_STATE_CHANGED)
+        registerReceiver(bluetoothReceiver, filter)
+
         repository.startBle()
-        // Start NC advertising so this phone is reachable for incoming chats
         repository.startNc()
         repository.createMessageNotificationChannel()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // START_STICKY tells Android: if the system kills this service
-        // to reclaim memory, restart it automatically as soon as possible.
-        // The intent will be null on restart, which is fine  we don't
-        // pass any data through the intent.
         return START_STICKY
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        // Stop BLE when the service is destroyed
+        // Unregister receiver before stopping — avoids leaks
+        unregisterReceiver(bluetoothReceiver)
         repository.stopBle()
-
-        // Stop NC when the service is destroyed
         repository.stopNc()
     }
 
-    // Required by Service class but we don't support binding
-    // everything communicates through the repository singleton instead
     override fun onBind(intent: Intent?): IBinder? = null
 
-    //  Notification
-
     private fun createNotificationChannel() {
-        // Notification channels only exist on Android 8+ (API 26)
-        // Our minSDK is 26 so this always runs, but the version check
-        // is good practice and satisfies the compiler
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "NearMe Discovery",          // Name the user sees in system settings
-                NotificationManager.IMPORTANCE_LOW  // Low = no sound, no vibration,
-                // just sits quietly in the shade
+                "NearMe Discovery",
+                NotificationManager.IMPORTANCE_LOW
             ).apply {
                 description = "Keeps NearMe running for peer discovery"
             }
-
             val manager = getSystemService(NotificationManager::class.java)
             manager.createNotificationChannel(channel)
         }
     }
 
     private fun buildNotification(): Notification {
-        // When the user taps the notification, open the app
         val pendingIntent = PendingIntent.getActivity(
             this,
             0,
             Intent(this, MainActivity::class.java).apply {
-                // If the app is already open, bring it to front instead of
-                // creating a new Activity on top
                 flags = Intent.FLAG_ACTIVITY_SINGLE_TOP
             },
-            // FLAG_IMMUTABLE is required on Android 12+ for security
             PendingIntent.FLAG_IMMUTABLE
         )
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("NearMe")
             .setContentText("Keeping you discoverable")
-            .setSmallIcon(R.drawable.ic_launcher_foreground) // TODO: replace with a proper app icon later
+            .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentIntent(pendingIntent)
-            .setOngoing(true)   // Prevents the user from swiping it away
-            // they must stop the service to dismiss it
-            .setSilent(true)     // No sound when it first appears
+            .setOngoing(true)
+            .setSilent(true)
             .build()
     }
 }
