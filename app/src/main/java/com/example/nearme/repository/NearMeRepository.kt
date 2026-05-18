@@ -42,8 +42,8 @@ class NearMeRepository(private val context: Context) {
 
     // replay = 1 ensures late collectors (ChatViewModel opening after
 // connection is already established) still receive the endpointId
-    private val _connectedEndpointId = MutableSharedFlow<String>(replay = 1)
-    val connectedEndpointId: SharedFlow<String> = _connectedEndpointId.asSharedFlow()
+    private val _connectedEndpointId = MutableSharedFlow<Pair<String, String>>(replay = 1)
+    val connectedEndpointId: SharedFlow<Pair<String, String>> = _connectedEndpointId.asSharedFlow()
 
     // ─── Coroutine Scope ──────────────────────────────────────────────────────
     // The repository needs its own coroutine scope because it outlives any
@@ -180,12 +180,13 @@ class NearMeRepository(private val context: Context) {
 
         nearbyManager.onConnected = { endpointId ->
             android.util.Log.d("REPO", "NC connected: $endpointId")
-            // Reset BLE advertisement back to Available
-            val shortId = LocalAuth.getShortId(context)
-            val displayName = LocalAuth.getDisplayName(context)
-            bleAdvertiser.startAdvertising(shortId, displayName, STATUS_AVAILABLE)
+            val myShortId = LocalAuth.getShortId(context)
+            val myDisplayName = LocalAuth.getDisplayName(context)
+            bleAdvertiser.startAdvertising(myShortId, myDisplayName, STATUS_AVAILABLE)
+            // Look up WHO we just connected to
+            val peerShortId = nearbyManager.getShortIdForEndpoint(endpointId) ?: "unknown"
             repositoryScope.launch {
-                _connectedEndpointId.emit(endpointId)
+                _connectedEndpointId.emit(Pair(peerShortId, endpointId))
             }
         }
 
@@ -204,6 +205,11 @@ class NearMeRepository(private val context: Context) {
     // Called by the foreground service in onDestroy
     fun stopNc() {
         nearbyManager.stopAllConnections()
+    }
+
+    // Add this method to NearMeRepository
+    fun getEndpointForShortId(shortId: String): String? {
+        return nearbyManager.getEndpointForShortId(shortId)
     }
 
     // Called by ChatViewModel when user taps a person to start chatting.

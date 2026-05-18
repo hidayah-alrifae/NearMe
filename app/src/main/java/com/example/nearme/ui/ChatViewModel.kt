@@ -54,26 +54,34 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     fun startChat(conversationId: String) {
         currentConversationId = conversationId
 
-        // Tell repository which conversation is open — incoming messages
-        // from this sender won't trigger notifications
         repository.setActiveConversation(conversationId)
 
-        // Start NC discovery — repository will look for this shortId
-        repository.connectToUser(conversationId)
+        // Check if already connected to this person (from a previous session)
+        val existingEndpoint = repository.getEndpointForShortId(conversationId)
+        if (existingEndpoint != null) {
+            // Already connected — use the existing endpoint directly
+            currentEndpointId = existingEndpoint
+            _isConnected.value = true
+        } else {
+            // Not connected yet — start NC discovery
+            repository.connectToUser(conversationId)
+        }
 
-        // Collect messages from Room database — updates UI automatically
+        // Collect messages from Room database
         viewModelScope.launch {
             messageDao.getMessages(conversationId).collect { messageList ->
                 _messages.value = messageList
             }
         }
 
-        // Collect the connected endpointId from repository —
-        // this fires when NC connection succeeds on either side
+        // Collect new connections — but ONLY accept ones for OUR conversation
         viewModelScope.launch {
-            repository.connectedEndpointId.collect { endpointId ->
-                currentEndpointId = endpointId
-                _isConnected.value = true
+            repository.connectedEndpointId.collect { (peerShortId, endpointId) ->
+                // CRITICAL: only accept connections for the person we're chatting with
+                if (peerShortId == currentConversationId) {
+                    currentEndpointId = endpointId
+                    _isConnected.value = true
+                }
             }
         }
     }
