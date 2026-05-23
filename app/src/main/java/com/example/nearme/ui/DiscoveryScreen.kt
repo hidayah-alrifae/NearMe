@@ -13,6 +13,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.nearme.model.UserProfile
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 
 /**
  * Discovery screen — shows a list of nearby users
@@ -55,6 +57,33 @@ fun DiscoveryScreen(viewModel: DiscoveryViewModel = viewModel(),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+        val wifiAwareAvailable = viewModel.wifiAwareAvailable
+        val isSearching by viewModel.isExtendedSearching.collectAsState()
+
+        // "Search Further" button — triggers a 30-second Wi-Fi Aware subscribe
+       // to discover NearMe users at extended range (50-100m vs BLE's ~30m).
+       // Only visible on phones with Wi-Fi Aware hardware.
+
+        if (wifiAwareAvailable) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Button(
+                onClick = { viewModel.startExtendedSearch() },
+                enabled = !isSearching,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                if (isSearching) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(16.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Searching further...")
+                } else {
+                    Text("Search Further")
+                }
+            }
+        }
 
         Spacer(modifier = Modifier.height(16.dp))
 

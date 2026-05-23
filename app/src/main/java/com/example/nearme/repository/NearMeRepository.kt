@@ -26,6 +26,8 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.example.nearme.MainActivity
 import com.example.nearme.R
+import com.example.nearme.wifiaware.WifiAwareManager
+import android.util.Log
 
 class NearMeRepository(private val context: Context) {
 
@@ -65,7 +67,11 @@ class NearMeRepository(private val context: Context) {
     private var activeConversationId: String? = null
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
-    // private lateinit var wifiAwareManager: WifiAwareManager
+    private val wifiAwareManager = WifiAwareManager(context)
+
+    // Exposed to UI so "Search Further" button only appears on
+    // phones with Wi-Fi Aware hardware (S21 yes, J4+ no)
+    val wifiAwareAvailable: Boolean get() = wifiAwareManager.isSupported
 
     // ─── Discovered Users ─────────────────────────────────────────────────────
     // Moved here from DiscoveryViewModel — same logic, new home
@@ -74,6 +80,12 @@ class NearMeRepository(private val context: Context) {
 
     private val _discoveredUsers = MutableStateFlow<List<UserProfile>>(emptyList())
     val discoveredUsers: StateFlow<List<UserProfile>> = _discoveredUsers.asStateFlow()
+
+    // Tracks whether a Wi-Fi Aware subscribe session is currently active.
+    // The UI uses this to show a spinner on the "Search Further" button
+   // and disable it while search is already running.
+    private val _isExtendedSearching = MutableStateFlow(false)
+    val isExtendedSearching: StateFlow<Boolean> = _isExtendedSearching.asStateFlow()
 
     // How long before a user is considered gone (30 seconds)
     private val staleTimeout = 30_000L
@@ -149,6 +161,50 @@ class NearMeRepository(private val context: Context) {
         bleAdvertiser.stopAdvertising()
         bleScanner.stopScanning()
     }
+
+    // ─── Wi-Fi Aware Control ──────────────────────────────────────────────────
+
+    // Called by the foreground service in onCreate() after startNc().
+    // Wires up callbacks and starts always-on publishing so other NearMe
+    // phones can find us at extended range (50-100m vs BLE's ~30m).
+    fun startWifiAware() {
+        val shortId = LocalAuth.getShortId(context)
+        val displayName = LocalAuth.getDisplayName(context)
+
+        // When Wi-Fi Aware finds a nearby NearMe publisher, feed the
+        // UserProfile into the same usersMap as BLE — keyed by shortId,
+        // so if BLE AND Wi-Fi Aware both see the same person, they merge
+        // into one entry instead of duplicating.
+        wifiAwareManager.onUserDiscovered = { userProfile ->
+            usersMap[userProfile.shortId] = userProfile
+            _discoveredUsers.value = usersMap.values.toList()
+            Log.d("REPO", "Wi-Fi Aware discovered: ${userProfile.displayName}#${userProfile.shortId}")
+        }
+
+        // When the 30-second subscribe timeout fires (or manual stop),
+        // flip the state back to STANDBY and update the button state.
+        wifiAwareManager.onSubscribeStopped = {
+            _isExtendedSearching.value = false
+            if (_radioState.value == RadioState.EXTENDED_SEARCH) {
+                _radioState.value = RadioState.STANDBY
+            }
+            Log.d("REPO", "Wi-Fi Aware subscribe stopped — back to STANDBY")
+        }
+
+        // Register receiver so we handle Wi-Fi on/off events
+        // (mirrors how BluetoothStateReceiver handles BT toggle)
+        wifiAwareManager.registerAvailabilityReceiver()
+
+        // Start always-on publishing — makes us discoverable at extended range
+        wifiAwareManager.startPublishing(shortId, displayName)
+    }
+
+    // Called by the foreground service in onDestroy() before stopNc().
+    fun stopWifiAware() {
+        wifiAwareManager.stopAll()
+    }
+
+
     // ─── NC Control ───────────────────────────────────────────────────────
 
     // Called by the foreground service to start NC advertising in background.
@@ -192,6 +248,9 @@ class NearMeRepository(private val context: Context) {
 
         nearbyManager.onDisconnected = { endpointId ->
             android.util.Log.d("REPO", "NC disconnected: $endpointId")
+
+            wifiAwareManager.resumePublishing()
+
             // If we were in NC_CHAT, return to STANDBY
             if (_radioState.value == RadioState.NC_CHAT) {
                 _radioState.value = RadioState.STANDBY
@@ -215,7 +274,12 @@ class NearMeRepository(private val context: Context) {
     // Called by ChatViewModel when user taps a person to start chatting.
 // Starts NC discovery filtered to only connect to that specific person.
     fun connectToUser(targetShortId: String) {
+        // Pause Wi-Fi Aware to prevent Wi-Fi Direct radio conflict.
+        // NC uses Wi-Fi Direct internally running both simultaneously
+        // causes WIFI_LAN connection failures on many devices.
+        wifiAwareManager.pausePublishing()
         _radioState.value = RadioState.NC_CHAT
+
         // Change BLE advertisement to "Calling" so the other phone
         // knows to start NC discovery for us
         val shortId = LocalAuth.getShortId(context)
@@ -271,12 +335,21 @@ class NearMeRepository(private val context: Context) {
     }
 
     fun startExtendedSearch() {
-        // TODO: start Wi-Fi Aware subscribe, auto-stop after 30 seconds
+        if (!wifiAwareManager.isSupported) {
+            Log.d("REPO", "Extended search unavailable — no Wi-Fi Aware hardware")
+            return
+        }
         _radioState.value = RadioState.EXTENDED_SEARCH
+        _isExtendedSearching.value = true
+        wifiAwareManager.startSubscribing()
+        Log.d("REPO", "Extended search started (30-second Wi-Fi Aware subscribe)")
     }
 
     fun stopExtendedSearch() {
+        wifiAwareManager.stopSubscribing()
+        _isExtendedSearching.value = false
         _radioState.value = RadioState.STANDBY
+        Log.d("REPO", "Extended search stopped manually")
     }
 
     // ─── Singleton ────────────────────────────────────────────────────────────
@@ -297,5 +370,4 @@ class NearMeRepository(private val context: Context) {
                 }
             }
         }
-    }
-}
+    }}

@@ -55,6 +55,10 @@ fun PermissionScreen(onPermissionsGranted: () -> Unit) {
             add(Manifest.permission.CHANGE_WIFI_STATE)
             add(Manifest.permission.CHANGE_NETWORK_STATE)
             add(Manifest.permission.ACCESS_NETWORK_STATE)
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                add(android.Manifest.permission.NEARBY_WIFI_DEVICES)
+            }
         }.toTypedArray()
     }
 

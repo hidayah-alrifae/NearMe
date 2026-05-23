@@ -100,6 +100,7 @@ class NearMeService : Service() {
 
         repository.startBle()
         repository.startNc()
+        repository.startWifiAware()
         repository.createMessageNotificationChannel()
     }
 
@@ -111,6 +112,7 @@ class NearMeService : Service() {
         super.onDestroy()
         // Unregister receiver before stopping — avoids leaks
         unregisterReceiver(bluetoothReceiver)
+        repository.stopWifiAware()
         repository.stopBle()
         repository.stopNc()
     }
