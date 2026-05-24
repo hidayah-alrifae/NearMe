@@ -28,6 +28,7 @@ import com.example.nearme.MainActivity
 import com.example.nearme.R
 import com.example.nearme.wifiaware.WifiAwareManager
 import android.util.Log
+import java.io.File
 
 class NearMeRepository(private val context: Context) {
 
@@ -46,6 +47,10 @@ class NearMeRepository(private val context: Context) {
 // connection is already established) still receive the endpointId
     private val _connectedEndpointId = MutableSharedFlow<Pair<String, String>>(replay = 1)
     val connectedEndpointId: SharedFlow<Pair<String, String>> = _connectedEndpointId.asSharedFlow()
+
+    // File transfer progress: (payloadId, bytesTransferred, totalBytes)
+    private val _fileProgress = MutableSharedFlow<Triple<Long, Long, Long>>()
+    val fileProgress: SharedFlow<Triple<Long, Long, Long>> = _fileProgress.asSharedFlow()
 
     // ─── Coroutine Scope ──────────────────────────────────────────────────────
     // The repository needs its own coroutine scope because it outlives any
@@ -257,6 +262,34 @@ class NearMeRepository(private val context: Context) {
             }
         }
 
+        // When a file finishes transferring, save it as a message in Room
+        // Same pattern as onMessageReceived but with filePath and mimeType
+        nearbyManager.onFileReceived = { endpointId, file, fileName, mimeType ->
+            val senderShortId = nearbyManager.getShortIdForEndpoint(endpointId) ?: "unknown"
+            repositoryScope.launch {
+                val message = Message(
+                    conversationId = senderShortId,
+                    senderName = senderShortId,
+                    content = fileName,  // Show filename as message text
+                    isFromMe = false,
+                    filePath = file.absolutePath,
+                    mimeType = mimeType
+                )
+                messageDao.insertMessage(message)
+                if (activeConversationId != senderShortId) {
+                    postMessageNotification(senderShortId, "Sent you a file: $fileName")
+                }
+            }
+            Log.d("REPO", "File received from $senderShortId: $fileName")
+        }
+
+        // Progress callback  exposed so ChatViewModel can show a progress bar
+        nearbyManager.onFileProgress = { payloadId, bytesTransferred, totalBytes ->
+            repositoryScope.launch {
+                _fileProgress.emit(Triple(payloadId, bytesTransferred, totalBytes))
+            }
+        }
+
         // Start always-on advertising so others can reach us
         nearbyManager.startAdvertising(shortId, displayName)
     }
@@ -291,6 +324,11 @@ class NearMeRepository(private val context: Context) {
     // Called by ChatViewModel to send a message through the NC connection
     fun sendNcMessage(endpointId: String, message: String) {
         nearbyManager.sendMessage(endpointId, message)
+    }
+
+    // Called by ChatViewModel to send a file through the NC connection
+    fun sendNcFile(endpointId: String, file: File, fileName: String, mimeType: String) {
+        nearbyManager.sendFile(endpointId, file, fileName, mimeType)
     }
 
     // Called when user leaves the chat screen

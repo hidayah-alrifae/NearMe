@@ -24,5 +24,12 @@ data class Message (
     val isFromMe: Boolean = true,
 
     //was this message actually delivered to the other phone?
-    val isSent: Boolean = true
+    val isSent: Boolean = true,
+
+    // Path to the file on this device's local storage (null for text only messages)
+    val filePath: String? = null,
+
+    // MIME type of the attached file (e.g. "image/jpeg", "video/mp4")
+    // Used by the UI to decide how to display the attachment
+    val mimeType: String? = null
 )

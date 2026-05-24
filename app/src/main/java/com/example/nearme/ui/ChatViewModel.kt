@@ -10,6 +10,9 @@ import com.example.nearme.util.LocalAuth
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import android.net.Uri
+import android.provider.OpenableColumns
+import java.io.File
 
 /**
  * ChatViewModel manages the active chat session.
@@ -108,6 +111,95 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             // Then send over NC to the other device
             repository.sendNcMessage(endpointId, text)
         }
+    }
+
+    /**
+     * Sends a file (image/video) to the connected peer.
+     * Called by ChatScreen when the user picks a file from the gallery.
+     *
+     * Steps:
+     * 1. Read the file name and MIME type from the content URI
+     * 2. Copy the file to app's cache (because content:// URIs can expire)
+     * 3. Save a local Message to Room (so sender sees it in their chat)
+     * 4. Send through repository → NearbyManager
+     */
+    fun sendFile(uri: Uri) {
+        val endpointId = currentEndpointId ?: return
+        val conversationId = currentConversationId ?: return
+        val context = getApplication<Application>()
+
+        viewModelScope.launch {
+            try {
+                // Step 1: Get the file name from the content URI
+                val fileName = getFileName(context, uri) ?: "file_${System.currentTimeMillis()}"
+
+                // Step 2: Get MIME type
+                val mimeType = context.contentResolver.getType(uri) ?: "application/octet-stream"
+
+                // Step 3: Copy to a temp file in cache
+                // We can't pass a content:// URI to NC — it needs a real File
+                val tempFile = File(context.cacheDir, "send_$fileName")
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    tempFile.outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                } ?: return@launch
+
+                // Step 4: Check file size — limit to 25MB
+                val maxSize = 25 * 1024 * 1024L  // 25 MB
+                if (tempFile.length() > maxSize) {
+                    android.util.Log.w("ChatVM", "File too large: ${tempFile.length()} bytes")
+                    tempFile.delete()
+                    return@launch
+                }
+
+                // Step 5: Save the sender's copy to permanent storage
+                val sentDir = File(context.filesDir, "sent_files")
+                sentDir.mkdirs()
+                val permanentFile = File(sentDir, fileName)
+                tempFile.copyTo(permanentFile, overwrite = true)
+
+                // Step 6: Save to Room so it appears in our chat immediately
+                val message = Message(
+                    conversationId = conversationId,
+                    senderName = displayName,
+                    content = fileName,
+                    isFromMe = true,
+                    filePath = permanentFile.absolutePath,
+                    mimeType = mimeType
+                )
+                messageDao.insertMessage(message)
+
+                // Step 7: Send the file via NC
+                repository.sendNcFile(endpointId, tempFile, fileName, mimeType)
+
+                // Clean up temp file after a delay (give NC time to read it)
+                // NC reads the file asynchronously, so we can't delete immediately
+                kotlinx.coroutines.delay(5000)
+                tempFile.delete()
+
+            } catch (e: Exception) {
+                android.util.Log.e("ChatVM", "Failed to send file: ${e.message}")
+            }
+        }
+    }
+
+    /**
+     * Extracts the display name of a file from a content:// URI.
+     * Uses the ContentResolver to query the OpenableColumns.DISPLAY_NAME column.
+     * Returns null if the name can't be determined.
+     */
+    private fun getFileName(context: Application, uri: Uri): String? {
+        var name: String? = null
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (index >= 0) {
+                    name = cursor.getString(index)
+                }
+            }
+        }
+        return name
     }
 
     /**

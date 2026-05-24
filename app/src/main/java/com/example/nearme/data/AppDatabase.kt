@@ -7,7 +7,7 @@ import androidx.room.RoomDatabase
 import com.example.nearme.model.Message
 
 // tells Room: this database has one table (Message), and it's version 3
-@Database(entities = [Message::class], version = 3)
+@Database(entities = [Message::class], version = 4)
 abstract class AppDatabase : RoomDatabase() {
 
     // gives access to all the message operations we defined in MessageDao
