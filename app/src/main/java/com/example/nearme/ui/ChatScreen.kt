@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.nearme.model.Message
 import java.io.File
 
@@ -125,10 +126,10 @@ fun ChatScreen(
     }
 }
 
-// a single message bubble
+// A single message bubble with delivery status
 @Composable
-
 fun MessageBubble(message: Message) {
+    // My messages on the right (blue), their messages on the left (gray)
     val alignment = if (message.isFromMe) Alignment.End else Alignment.Start
     val color = if (message.isFromMe) Color(0xFF2196F3) else Color(0xFFE0E0E0)
     val textColor = if (message.isFromMe) Color.White else Color.Black
@@ -140,69 +141,88 @@ fun MessageBubble(message: Message) {
             .padding(vertical = 4.dp),
         horizontalAlignment = alignment
     ) {
-        Box(
+        Column(
             modifier = Modifier
                 .background(color, RoundedCornerShape(12.dp))
                 .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
+            // ── Message Content ──────────────────────────────────────
             if (message.filePath != null && message.mimeType != null) {
-                // This is a file message — show image or file info
-                Column {
-                    if (message.mimeType.startsWith("image/")) {
-                        // Load and display the image
-                        val file = File(message.filePath)
-                        if (file.exists()) {
-                            val bitmap = remember(message.filePath) {
-                                BitmapFactory.decodeFile(message.filePath)
-                            }
-                            if (bitmap != null) {
-                                Image(
-                                    bitmap = bitmap.asImageBitmap(),
-                                    contentDescription = message.content,
-                                    modifier = Modifier
-                                        .widthIn(max = 220.dp)
-                                        .heightIn(max = 280.dp)
-                                        .clip(RoundedCornerShape(8.dp)),
-                                    contentScale = ContentScale.Fit
-                                )
-                            } else {
-                                Text(text = "📷 ${message.content}", color = textColor)
-                            }
-                        } else {
-                            Text(text = "📷 ${message.content} (file missing)", color = textColor)
+                // File message — render based on MIME type
+                if (message.mimeType.startsWith("image/")) {
+                    val file = File(message.filePath)
+                    if (file.exists()) {
+                        val bitmap = remember(message.filePath) {
+                            BitmapFactory.decodeFile(message.filePath)
                         }
-                    } else if (message.mimeType.startsWith("video/")) {
-                        // Video — show icon and filename (no inline player)
-                        Text(text = "🎬 ${message.content}", color = textColor)
-                    } else {
-                        // Other file type
-                        Text(text = "📄 ${message.content}", color = textColor)
-                    }
-
-                    // "Save" button for received files only
-                    if (!message.isFromMe) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        TextButton(
-                            onClick = { saveFileToDevice(context, message) },
-                            contentPadding = PaddingValues(0.dp),
-                            modifier = Modifier.height(28.dp)
-                        ) {
-                            Text(
-                                "Save to device",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = if (message.isFromMe) Color.White.copy(alpha = 0.8f)
-                                else MaterialTheme.colorScheme.primary
+                        if (bitmap != null) {
+                            Image(
+                                bitmap = bitmap.asImageBitmap(),
+                                contentDescription = message.content,
+                                modifier = Modifier
+                                    .widthIn(max = 220.dp)
+                                    .heightIn(max = 280.dp)
+                                    .clip(RoundedCornerShape(8.dp)),
+                                contentScale = ContentScale.Fit
                             )
+                        } else {
+                            Text(text = "📷 ${message.content}", color = textColor)
                         }
+                    } else {
+                        Text(text = "📷 ${message.content} (file missing)", color = textColor)
+                    }
+                } else if (message.mimeType.startsWith("video/")) {
+                    // Video — show icon and filename (no inline player)
+                    Text(text = "🎬 ${message.content}", color = textColor)
+                } else {
+                    // Other file type
+                    Text(text = "📄 ${message.content}", color = textColor)
+                }
+
+                // "Save" button for received files only
+                if (!message.isFromMe) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    TextButton(
+                        onClick = { saveFileToDevice(context, message) },
+                        contentPadding = PaddingValues(0.dp),
+                        modifier = Modifier.height(28.dp)
+                    ) {
+                        Text(
+                            "Save to device",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (message.isFromMe) Color.White.copy(alpha = 0.8f)
+                            else MaterialTheme.colorScheme.primary
+                        )
                     }
                 }
             } else {
-                // Regular text message — same as before
+                // Regular text message
                 Text(text = message.content, color = textColor)
+            }
+
+            // ── Delivery Status (outgoing messages only) ─────────────
+            if (message.isFromMe) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = when (message.status) {
+                        "sending" -> "⏳"       // file transfer in progress
+                        "sent" -> "✓"           // dispatched, awaiting ACK
+                        "delivered" -> "✓✓"     // receiver confirmed
+                        else -> "✓"
+                    },
+                    fontSize = 11.sp,
+                    color = when (message.status) {
+                        "delivered" -> Color(0xFF4CAF50)  // green checkmarks
+                        "sending" -> Color.White.copy(alpha = 0.5f)
+                        else -> Color.White.copy(alpha = 0.7f)
+                    },
+                    modifier = Modifier.align(Alignment.End)
+                )
             }
         }
     }
 }
+
 /**
  * Saves a received file to the device's shared storage (gallery/Downloads).
  * Uses MediaStore on Android 10+ (no permission needed).

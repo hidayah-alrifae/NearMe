@@ -6,11 +6,11 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import com.example.nearme.model.Message
 
-// tells Room: this database has one table (Message), and it's version 3
-@Database(entities = [Message::class], version = 4)
+// Version 5: replaced isSent with status field on Message
+@Database(entities = [Message::class], version = 5)
 abstract class AppDatabase : RoomDatabase() {
 
-    // gives access to all the message operations we defined in MessageDao
+    // Gives access to all the message operations we defined in MessageDao
     abstract fun messageDao(): MessageDao
 
     // Singleton: makes sure only ONE database connection exists in the whole app
@@ -19,13 +19,13 @@ abstract class AppDatabase : RoomDatabase() {
         private var INSTANCE: AppDatabase? = null
 
         fun getInstance(context: Context): AppDatabase {
-            // if database already exists, return it
-            // if not, create it for the first time
+            // If database already exists, return it
+            // If not, create it for the first time
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
                     AppDatabase::class.java,
-                    "nearme_database" // the actual file name saved on the phone
+                    "nearme_database"
                 ).fallbackToDestructiveMigration()
                     .build()
                 INSTANCE = instance

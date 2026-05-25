@@ -6,13 +6,24 @@ import com.google.android.gms.nearby.Nearby
 import com.google.android.gms.nearby.connection.*
 import android.os.ParcelFileDescriptor
 import java.io.File
+
 /**
  * NearbyManager wraps the Google Nearby Connections API.
  * Handles advertising, targeted discovery, connection lifecycle,
- * and message sending/receiving.
+ * message sending/receiving, and file transfer.
  *
- * Callbacks are settable lambdas — the repository wires them up
- * after construction. This avoids constructor parameter coupling.
+ * DELIVERY STATUS PROTOCOL:
+ *   Text messages:
+ *     Sender → "MSG:<messageId>:<text>"     → Receiver
+ *     Receiver → "MSG_ACK:<messageId>"      → Sender (auto)
+ *
+ *   File messages:
+ *     Sender → "FILE_META:<payloadId>:<fileName>:<mimeType>:<messageId>"
+ *     Sender → Payload.fromFile(...)
+ *     Receiver → "FILE_ACK:<messageId>"     → Sender (after file saved)
+ *
+ * When sender receives MSG_ACK or FILE_ACK, the onAckReceived callback
+ * fires so the repository can update the message status to "delivered".
  */
 class NearbyManager(private val context: Context) {
 
@@ -21,8 +32,10 @@ class NearbyManager(private val context: Context) {
         private const val SERVICE_ID = "com.example.nearme"
     }
 
+    // ─── Connection State ─────────────────────────────────────────────────
+
     // Our own broadcast name — used when requesting connections
-// so the other side can identify us
+    // so the other side can identify us
     private var localBroadcastName: String = ""
 
     // The single Nearby Connections client — shared across all NC operations
@@ -38,17 +51,28 @@ class NearbyManager(private val context: Context) {
     // The shortId we're looking for during discovery
     private var targetShortId: String? = null
 
-    // Settable callbacks — repository wires these up in startNc()
+    // ─── Callbacks — repository wires these up in startNc() ───────────────
+
     var onMessageReceived: ((senderEndpointId: String, messageText: String) -> Unit)? = null
     var onConnected: ((endpointId: String) -> Unit)? = null
     var onDisconnected: ((endpointId: String) -> Unit)? = null
-    // File transfer callbacks  repository wires these up alongside the text ones
+
+    // File transfer callbacks — repository wires these up alongside the text ones
     var onFileReceived: ((senderEndpointId: String, file: File, fileName: String, mimeType: String) -> Unit)? = null
     var onFileProgress: ((payloadId: Long, bytesTransferred: Long, totalBytes: Long) -> Unit)? = null
 
-    // Tracks incoming file transfers: payloadId → metadata (fileName, mimeType)
+    // NEW: Called when we receive MSG_ACK or FILE_ACK from the other device
+    var onAckReceived: ((messageId: String) -> Unit)? = null
+
+    // ─── File Transfer Tracking ───────────────────────────────────────────
+
+    // Tracks incoming file transfers: payloadId → metadata
     // Populated by the metadata BYTES payload that arrives BEFORE the FILE payload
-    private data class FileMetadata(val fileName: String, val mimeType: String)
+    private data class FileMetadata(
+        val fileName: String,
+        val mimeType: String,
+        val messageId: String  // NEW: the sender's Room message ID for ACK
+    )
     private val pendingFileTransfers = mutableMapOf<Long, FileMetadata>()
 
     // Tracks payloadId → endpointId so we know WHO sent a file when it completes
@@ -57,6 +81,8 @@ class NearbyManager(private val context: Context) {
     // Stores the received file URI so we can copy it on completion
     private val pendingFileUris = mutableMapOf<Long, android.net.Uri>()
 
+    // ─── Advertising ──────────────────────────────────────────────────────
+
     /**
      * Start NC advertising so other devices can find us.
      * Broadcast name format: "shortId|DisplayName" (e.g. "3fa7|Ahmed")
@@ -64,7 +90,7 @@ class NearbyManager(private val context: Context) {
      */
     fun startAdvertising(shortId: String, displayName: String) {
         val broadcastName = "$shortId|$displayName"
-        localBroadcastName = broadcastName  // save for requestConnection
+        localBroadcastName = broadcastName
 
         val options = AdvertisingOptions.Builder()
             .setStrategy(Strategy.P2P_CLUSTER)
@@ -82,14 +108,15 @@ class NearbyManager(private val context: Context) {
         connectionsClient.stopAdvertising()
     }
 
+    // ─── Discovery ────────────────────────────────────────────────────────
+
     /**
      * Start discovery looking for a SPECIFIC shortId.
      * Only requests connection when the target is found.
      * This prevents connecting to random nearby NC devices.
      */
     fun startDiscoveryForTarget(shortId: String) {
-        android.util.Log.d("NC_MGR", "Starting discovery for: $shortId")
-
+        Log.d(TAG, "Starting discovery for: $shortId")
         targetShortId = shortId
         val options = DiscoveryOptions.Builder()
             .setStrategy(Strategy.P2P_CLUSTER)
@@ -104,25 +131,29 @@ class NearbyManager(private val context: Context) {
         targetShortId = null
     }
 
+    // ─── Sending ──────────────────────────────────────────────────────────
 
     /**
-     * Send a text message to a connected peer.
+     * Send a text message with a message ID for delivery tracking.
+     * Format: "MSG:<messageId>:<text>"
+     * The receiver will send back "MSG_ACK:<messageId>" on receipt.
      */
-    fun sendMessage(endpointId: String, message: String) {
-        val payload = Payload.fromBytes(message.toByteArray())
-        connectionsClient.sendPayload(endpointId, payload)
+    fun sendMessage(endpointId: String, messageId: String, text: String) {
+        val payload = "MSG:$messageId:$text"
+        connectionsClient.sendPayload(endpointId, Payload.fromBytes(payload.toByteArray()))
     }
 
     /**
-     * Send a file to a connected peer.
+     * Send a file to the connected peer using Payload.fromFile().
      * Two-step process:
-     * 1. Send a small BYTES payload with metadata (so receiver knows filename + type)
+     * 1. Send a small BYTES payload with metadata (so receiver knows filename + type + messageId)
      * 2. Send the FILE payload (NC handles chunking automatically)
      *
-     * The metadata format: "FILE_META:<filePayloadId>:<fileName>:<mimeType>"
-     * The receiver parses this in onPayloadReceived and stores it in pendingFileTransfers.
+     * The metadata format: "FILE_META:<filePayloadId>:<fileName>:<mimeType>:<messageId>"
+     * The receiver parses this and stores it in pendingFileTransfers.
+     * When the file finishes, the receiver sends "FILE_ACK:<messageId>" back.
      */
-    fun sendFile(endpointId: String, file: File, fileName: String, mimeType: String) {
+    fun sendFile(endpointId: String, file: File, fileName: String, mimeType: String, messageId: String) {
         try {
             // Step 1: Create the FILE payload from the file
             val pfd = ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
@@ -130,18 +161,21 @@ class NearbyManager(private val context: Context) {
             val filePayloadId = filePayload.id
 
             // Step 2: Send metadata FIRST so receiver knows what's coming
-            val metadata = "FILE_META:$filePayloadId:$fileName:$mimeType"
+            // Added messageId at the end so receiver can ACK it
+            val metadata = "FILE_META:$filePayloadId:$fileName:$mimeType:$messageId"
             val metadataPayload = Payload.fromBytes(metadata.toByteArray())
             connectionsClient.sendPayload(endpointId, metadataPayload)
 
             // Step 3: Send the actual file
             connectionsClient.sendPayload(endpointId, filePayload)
 
-            Log.d(TAG, "Sending file: $fileName ($mimeType), payloadId=$filePayloadId")
+            Log.d(TAG, "Sending file: $fileName ($mimeType), payloadId=$filePayloadId, messageId=$messageId")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to send file: ${e.message}")
         }
     }
+
+    // ─── Connection Management ────────────────────────────────────────────
 
     /**
      * Disconnect from a specific peer.
@@ -187,6 +221,20 @@ class NearbyManager(private val context: Context) {
         return connectedEndpoints.entries.firstOrNull { it.value == shortId }?.key
     }
 
+    // ─── Private: ACK Helper ──────────────────────────────────────────────
+
+    /**
+     * Send a delivery acknowledgment back to the sender.
+     * Called automatically when a text message or file is fully received.
+     */
+    private fun sendAck(endpointId: String, type: String, id: String) {
+        val ack = "${type}_ACK:$id"
+        connectionsClient.sendPayload(endpointId, Payload.fromBytes(ack.toByteArray()))
+        Log.d(TAG, "Sent $ack to $endpointId")
+    }
+
+    // ─── Private: Discovery Callback ──────────────────────────────────────
+
     /**
      * Discovery callback — only connects to the target shortId.
      * Extracts shortId from the broadcast name ("shortId|DisplayName").
@@ -195,7 +243,7 @@ class NearbyManager(private val context: Context) {
         override fun onEndpointFound(endpointId: String, info: DiscoveredEndpointInfo) {
             // Extract shortId from broadcast name "3fa7|Ahmed" → "3fa7"
             val foundShortId = info.endpointName.substringBefore("|")
-            android.util.Log.d("NC_MGR", "Found endpoint: $foundShortId, target: $targetShortId")
+            Log.d(TAG, "Found endpoint: $foundShortId, target: $targetShortId")
 
             val target = targetShortId
             if (target != null && foundShortId == target) {
@@ -208,6 +256,8 @@ class NearbyManager(private val context: Context) {
         }
         override fun onEndpointLost(endpointId: String) {}
     }
+
+    // ─── Private: Connection Lifecycle ────────────────────────────────────
 
     /**
      * Connection lifecycle — handles the three stages:
@@ -232,7 +282,6 @@ class NearbyManager(private val context: Context) {
                 onConnected?.invoke(endpointId)
             } else {
                 pendingConnections.remove(endpointId)
-
             }
         }
         override fun onDisconnected(endpointId: String) {
@@ -241,19 +290,19 @@ class NearbyManager(private val context: Context) {
         }
     }
 
+    // ─── Private: Payload Callback (the protocol handler) ─────────────────
+
     /**
-     * Payload callback — handles incoming messages.
-     * Converts bytes to String and passes to repository via onMessageReceived.
-     */
-    /**
-     * Payload callback — handles both text messages and file transfers.
+     * Payload callback — handles ALL incoming payloads.
      *
-     * BYTES payloads are either:
-     *   - A text message (passed to onMessageReceived)
-     *   - File metadata prefixed with "FILE_META:" (stored for when the file arrives)
+     * BYTES payloads (protocol prefixes):
+     *   "MSG:<id>:<text>"                        → text message, send MSG_ACK back
+     *   "MSG_ACK:<id>"                           → delivery confirmation for text
+     *   "FILE_META:<payloadId>:<name>:<mime>:<msgId>" → file metadata, store for when file arrives
+     *   "FILE_ACK:<id>"                          → delivery confirmation for file
+     *   (anything else)                          → legacy plain text (backward compat)
      *
-     * FILE payloads are saved to a temp location by NC automatically.
-     * We track them here and move them to permanent storage when complete.
+     * FILE payloads: tracked via pendingFileTransfers map, completed in onPayloadTransferUpdate.
      */
     private val payloadCallback = object : PayloadCallback() {
         override fun onPayloadReceived(endpointId: String, payload: Payload) {
@@ -261,27 +310,55 @@ class NearbyManager(private val context: Context) {
                 Payload.Type.BYTES -> {
                     val text = payload.asBytes()?.let { String(it) } ?: return
 
-                    if (text.startsWith("FILE_META:")) {
-                        // This is file metadata, not a chat message
-                        // Format: "FILE_META:<payloadId>:<fileName>:<mimeType>"
-                        val parts = text.removePrefix("FILE_META:").split(":", limit = 3)
-                        if (parts.size == 3) {
-                            val payloadId = parts[0].toLongOrNull() ?: return
-                            val fileName = parts[1]
-                            val mimeType = parts[2]
-                            pendingFileTransfers[payloadId] = FileMetadata(fileName, mimeType)
-                            Log.d(TAG, "File metadata received: $fileName ($mimeType) payloadId=$payloadId")
+                    when {
+                        text.startsWith("MSG:") -> {
+                            // Format: MSG:<messageId>:<text>
+                            val firstColon = text.indexOf(':')
+                            val secondColon = text.indexOf(':', firstColon + 1)
+                            if (secondColon == -1) return
+
+                            val messageId = text.substring(firstColon + 1, secondColon)
+                            val messageText = text.substring(secondColon + 1)
+
+                            // Deliver the message to the repository
+                            onMessageReceived?.invoke(endpointId, messageText)
+                            // ACK back to sender — "I got your message"
+                            sendAck(endpointId, "MSG", messageId)
                         }
-                    } else {
-                        // Regular text message — same as before
-                        onMessageReceived?.invoke(endpointId, text)
+
+                        text.startsWith("MSG_ACK:") -> {
+                            val messageId = text.removePrefix("MSG_ACK:")
+                            onAckReceived?.invoke(messageId)
+                        }
+
+                        text.startsWith("FILE_ACK:") -> {
+                            val messageId = text.removePrefix("FILE_ACK:")
+                            onAckReceived?.invoke(messageId)
+                        }
+
+                        text.startsWith("FILE_META:") -> {
+                            // Format: FILE_META:<payloadId>:<fileName>:<mimeType>:<messageId>
+                            val parts = text.removePrefix("FILE_META:").split(":", limit = 4)
+                            if (parts.size == 4) {
+                                val payloadId = parts[0].toLongOrNull() ?: return
+                                val fileName = parts[1]
+                                val mimeType = parts[2]
+                                val messageId = parts[3]
+                                pendingFileTransfers[payloadId] = FileMetadata(fileName, mimeType, messageId)
+                                Log.d(TAG, "File metadata received: $fileName ($mimeType) payloadId=$payloadId messageId=$messageId")
+                            }
+                        }
+
+                        else -> {
+                            // Fallback for plain text (backward compatibility)
+                            onMessageReceived?.invoke(endpointId, text)
+                        }
                     }
                 }
 
                 Payload.Type.FILE -> {
                     payloadToEndpoint[payload.id] = endpointId
                     // Save the file URI — this is the safe way to access the file
-                    // asJavaFile() crashes on some Android versions
                     val fileUri = payload.asFile()?.asUri()
                     if (fileUri != null) {
                         pendingFileUris[payload.id] = fileUri
@@ -337,6 +414,9 @@ class NearbyManager(private val context: Context) {
                             if (finalFile.exists() && finalFile.length() > 0) {
                                 Log.d(TAG, "File received and saved: ${finalFile.absolutePath} (${finalFile.length()} bytes)")
                                 onFileReceived?.invoke(senderEndpoint, finalFile, metadata.fileName, metadata.mimeType)
+
+                                // NEW: ACK back to sender — "I got the complete file"
+                                sendAck(senderEndpoint, "FILE", metadata.messageId)
                             } else {
                                 Log.e(TAG, "Saved file is empty or missing: ${finalFile.absolutePath}")
                             }
@@ -363,4 +443,5 @@ class NearbyManager(private val context: Context) {
                 }
             }
         }
-    } }
+    }
+}

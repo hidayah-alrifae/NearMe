@@ -1,6 +1,9 @@
 package com.example.nearme.ui
 
 import android.app.Application
+import android.net.Uri
+import android.provider.OpenableColumns
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.nearme.data.AppDatabase
@@ -10,8 +13,6 @@ import com.example.nearme.util.LocalAuth
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
-import android.net.Uri
-import android.provider.OpenableColumns
 import java.io.File
 
 /**
@@ -90,38 +91,47 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Sends a message to the connected peer.
-     * Silently returns if NC hasn't connected yet (endpointId is null).
-     * Saves to Room first (so it appears in UI), then sends via NC.
+     * Sends a text message to the connected peer.
+     * Message is saved to Room immediately (so UI updates),
+     * then sent via NC with a message ID for delivery tracking.
+     * Status starts as "sent" — changes to "delivered" when ACK arrives.
      */
     fun sendMessage(text: String) {
         val endpointId = currentEndpointId ?: return
         val conversationId = currentConversationId ?: return
 
+        // Use timestamp as message ID — unique enough for P2P
+        val messageId = System.currentTimeMillis().toString()
+
         val message = Message(
+            id = messageId,
             conversationId = conversationId,
             senderName = displayName,
             content = text,
-            isFromMe = true
+            isFromMe = true,
+            status = "sent"  // ✓ waiting for ACK
         )
 
         viewModelScope.launch {
             // Save locally first — UI updates immediately via Room Flow
             messageDao.insertMessage(message)
-            // Then send over NC to the other device
-            repository.sendNcMessage(endpointId, text)
+            // Then send over NC with the message ID for ACK tracking
+            repository.sendNcMessage(endpointId, messageId, text)
         }
     }
 
     /**
-     * Sends a file (image/video) to the connected peer.
+     * Sends a file (image/video/document) to the connected peer.
      * Called by ChatScreen when the user picks a file from the gallery.
      *
      * Steps:
      * 1. Read the file name and MIME type from the content URI
      * 2. Copy the file to app's cache (because content:// URIs can expire)
-     * 3. Save a local Message to Room (so sender sees it in their chat)
-     * 4. Send through repository → NearbyManager
+     * 3. Save sender's permanent copy to filesDir/sent_files/
+     * 4. Save Message to Room with status="sending" (UI shows ⏳)
+     * 5. Send through repository → NearbyManager (with messageId for ACK)
+     * 6. Update status to "sent" (UI shows ✓)
+     * 7. When ACK arrives (handled by repository), status → "delivered" (✓✓)
      */
     fun sendFile(uri: Uri) {
         val endpointId = currentEndpointId ?: return
@@ -148,7 +158,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 // Step 4: Check file size — limit to 25MB
                 val maxSize = 25 * 1024 * 1024L  // 25 MB
                 if (tempFile.length() > maxSize) {
-                    android.util.Log.w("ChatVM", "File too large: ${tempFile.length()} bytes")
+                    Log.w("ChatVM", "File too large: ${tempFile.length()} bytes")
                     tempFile.delete()
                     return@launch
                 }
@@ -159,19 +169,27 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 val permanentFile = File(sentDir, fileName)
                 tempFile.copyTo(permanentFile, overwrite = true)
 
-                // Step 6: Save to Room so it appears in our chat immediately
+                // Step 6: Generate message ID for this file message
+                val messageId = System.currentTimeMillis().toString()
+
+                // Step 7: Save to Room so it appears in our chat immediately
                 val message = Message(
+                    id = messageId,
                     conversationId = conversationId,
                     senderName = displayName,
                     content = fileName,
                     isFromMe = true,
+                    status = "sending",  // ⏳ file transfer in progress
                     filePath = permanentFile.absolutePath,
                     mimeType = mimeType
                 )
                 messageDao.insertMessage(message)
 
-                // Step 7: Send the file via NC
-                repository.sendNcFile(endpointId, tempFile, fileName, mimeType)
+                // Step 8: Send the file via NC (with messageId for ACK tracking)
+                repository.sendNcFile(endpointId, tempFile, fileName, mimeType, messageId)
+
+                // Step 9: File payload dispatched — update to "sent" (✓)
+                messageDao.updateStatus(messageId, "sent")
 
                 // Clean up temp file after a delay (give NC time to read it)
                 // NC reads the file asynchronously, so we can't delete immediately
@@ -179,7 +197,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 tempFile.delete()
 
             } catch (e: Exception) {
-                android.util.Log.e("ChatVM", "Failed to send file: ${e.message}")
+                Log.e("ChatVM", "Failed to send file: ${e.message}")
             }
         }
     }
@@ -225,5 +243,4 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             repository.setActiveConversation(convId)
         }
     }
-
 }
