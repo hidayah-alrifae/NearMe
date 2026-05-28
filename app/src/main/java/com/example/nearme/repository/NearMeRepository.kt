@@ -29,6 +29,7 @@ import com.example.nearme.R
 import com.example.nearme.wifiaware.WifiAwareManager
 import android.util.Log
 import java.io.File
+import androidx.annotation.RequiresApi
 
 class NearMeRepository(private val context: Context) {
 
@@ -68,6 +69,8 @@ class NearMeRepository(private val context: Context) {
     private val messageDao = AppDatabase.getInstance(context).messageDao()
 
     private var activeConversationId: String? = null
+
+    private var activeTransport: String? = null  // "NC" or "NDP"
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
     private val wifiAwareManager = WifiAwareManager(context)
@@ -170,6 +173,7 @@ class NearMeRepository(private val context: Context) {
     // Called by the foreground service in onCreate() after startNc().
     // Wires up callbacks and starts always-on publishing so other NearMe
     // phones can find us at extended range (50-100m vs BLE's ~30m).
+    @RequiresApi(Build.VERSION_CODES.Q)
     fun startWifiAware() {
         val shortId = LocalAuth.getShortId(context)
         val displayName = LocalAuth.getDisplayName(context)
@@ -198,11 +202,70 @@ class NearMeRepository(private val context: Context) {
         // (mirrors how BluetoothStateReceiver handles BT toggle)
         wifiAwareManager.registerAvailabilityReceiver()
 
+        wifiAwareManager.onChatRequested = { peerShortId, peerHandle ->
+            Log.d("REPO", "Chat requested via Wi-Fi Aware from: $peerShortId")
+            _radioState.value = RadioState.NAN_CHAT
+            wifiAwareManager.startNdpServer(peerShortId, peerHandle)
+        }
+
+        wifiAwareManager.onNdpConnected = { peerShortId ->
+            activeTransport = "NDP"
+            _radioState.value = RadioState.NAN_CHAT
+            Log.d("REPO", "NDP connected to $peerShortId")
+            repositoryScope.launch {
+                _connectedEndpointId.emit(Pair(peerShortId, "NDP_$peerShortId"))
+            }
+        }
+
+        wifiAwareManager.onNdpMessageReceived = { peerShortId, messageText ->
+            when {
+                messageText.startsWith("MSG:") -> {
+                    val firstColon = messageText.indexOf(':')
+                    val secondColon = messageText.indexOf(':', firstColon + 1)
+                    if (secondColon != -1) {
+                        val messageId = messageText.substring(firstColon + 1, secondColon)
+                        val text = messageText.substring(secondColon + 1)
+                        repositoryScope.launch {
+                            val message = Message(
+                                conversationId = peerShortId,
+                                senderName = peerShortId,
+                                content = text,
+                                isFromMe = false,
+                                status = "delivered"
+                            )
+                            messageDao.insertMessage(message)
+                            if (activeConversationId != peerShortId) {
+                                postMessageNotification(peerShortId, text)
+                            }
+                        }
+                        wifiAwareManager.sendOverNdp("MSG_ACK:$messageId")
+                    }
+                }
+                messageText.startsWith("MSG_ACK:") -> {
+                    val id = messageText.removePrefix("MSG_ACK:")
+                    repositoryScope.launch { messageDao.updateStatus(id, "delivered") }
+                }
+                messageText.startsWith("FILE_ACK:") -> {
+                    val id = messageText.removePrefix("FILE_ACK:")
+                    repositoryScope.launch { messageDao.updateStatus(id, "delivered") }
+                }
+            }
+        }
+
+        wifiAwareManager.onNdpDisconnected = { peerShortId ->
+            Log.d("REPO", "NDP disconnected from $peerShortId")
+            activeTransport = null
+            if (_radioState.value == RadioState.NAN_CHAT) {
+                _radioState.value = RadioState.STANDBY
+            }
+        }
+
         // Start always-on publishing — makes us discoverable at extended range
         wifiAwareManager.startPublishing(shortId, displayName)
     }
 
     // Called by the foreground service in onDestroy() before stopNc().
+    @RequiresApi(Build.VERSION_CODES.Q)
     fun stopWifiAware() {
         wifiAwareManager.stopAll()
     }
@@ -310,19 +373,22 @@ class NearMeRepository(private val context: Context) {
 
     // Called by ChatViewModel when user taps a person to start chatting.
 // Starts NC discovery filtered to only connect to that specific person.
+    @RequiresApi(Build.VERSION_CODES.Q)
     fun connectToUser(targetShortId: String) {
-        // Pause Wi-Fi Aware to prevent Wi-Fi Direct radio conflict.
-        // NC uses Wi-Fi Direct internally running both simultaneously
-        // causes WIFI_LAN connection failures on many devices.
-        wifiAwareManager.pausePublishing()
-        _radioState.value = RadioState.NC_CHAT
+        val user = usersMap[targetShortId]
 
-        // Change BLE advertisement to "Calling" so the other phone
-        // knows to start NC discovery for us
-        val shortId = LocalAuth.getShortId(context)
-        val displayName = LocalAuth.getDisplayName(context)
-        bleAdvertiser.startAdvertising(shortId, displayName, STATUS_CALLING)
-        nearbyManager.startDiscoveryForTarget(targetShortId)
+        if (user?.discoverySource == "WIFI_AWARE") {
+            Log.d("REPO", "Connecting via Wi-Fi Aware NDP to $targetShortId")
+            wifiAwareManager.sendChatRequest(targetShortId)
+            wifiAwareManager.startNdpClient(targetShortId)
+        } else {
+            wifiAwareManager.pausePublishing()
+            _radioState.value = RadioState.NC_CHAT
+            val shortId = LocalAuth.getShortId(context)
+            val displayName = LocalAuth.getDisplayName(context)
+            bleAdvertiser.startAdvertising(shortId, displayName, STATUS_CALLING)
+            nearbyManager.startDiscoveryForTarget(targetShortId)
+        }
     }
 
     // Called by ChatViewModel to send a message through the NC connection
@@ -335,6 +401,40 @@ class NearMeRepository(private val context: Context) {
     // Called by ChatViewModel to send a file with delivery tracking
     fun sendNcFile(endpointId: String, file: File, fileName: String, mimeType: String, messageId: String) {
         nearbyManager.sendFile(endpointId, file, fileName, mimeType, messageId)
+    }
+
+    @RequiresApi(Build.VERSION_CODES.Q)
+    fun sendChatMessage(endpointId: String, messageId: String, text: String) {
+        if (activeTransport == "NDP") {
+            wifiAwareManager.sendOverNdp("MSG:$messageId:$text")
+        } else {
+            nearbyManager.sendMessage(endpointId, messageId, text)
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.Q)
+    fun sendChatFile(endpointId: String, file: File, fileName: String, mimeType: String, messageId: String) {
+        if (activeTransport == "NDP") {
+            Thread {
+                try {
+                    val fileBytes = file.readBytes()
+                    val chunkSize = 500 * 1024
+                    val totalChunks = (fileBytes.size + chunkSize - 1) / chunkSize
+                    wifiAwareManager.sendOverNdp("FILE_START:$messageId:$fileName:$mimeType:$totalChunks")
+                    for (i in 0 until totalChunks) {
+                        val start = i * chunkSize
+                        val end = minOf(start + chunkSize, fileBytes.size)
+                        val chunk = fileBytes.copyOfRange(start, end)
+                        val base64 = android.util.Base64.encodeToString(chunk, android.util.Base64.NO_WRAP)
+                        wifiAwareManager.sendOverNdp("FILE_CHUNK:$messageId:$i:$base64")
+                    }
+                } catch (e: Exception) {
+                    Log.e("REPO", "NDP file send failed: ${e.message}")
+                }
+            }.start()
+        } else {
+            nearbyManager.sendFile(endpointId, file, fileName, mimeType, messageId)
+        }
     }
 
     // Called when user leaves the chat screen
@@ -367,15 +467,17 @@ class NearMeRepository(private val context: Context) {
     // ─── State Transitions ────────────────────────────────────────────────────
 
 
-
+    @RequiresApi(Build.VERSION_CODES.Q)
     fun enterNanChat() {
-        // TODO: pause NC advertising to prevent Wi-Fi Direct conflict with NDP
         _radioState.value = RadioState.NAN_CHAT
+        activeTransport = "NDP"
     }
-
+    @RequiresApi(Build.VERSION_CODES.Q)
     fun exitNanChat() {
-        // TODO: resume NC advertising
+        wifiAwareManager.disconnectNdp()
+        activeTransport = null
         _radioState.value = RadioState.STANDBY
+        wifiAwareManager.resumePublishing()
     }
 
     fun startExtendedSearch() {

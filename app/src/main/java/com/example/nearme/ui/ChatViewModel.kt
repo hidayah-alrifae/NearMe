@@ -115,8 +115,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             // Save locally first — UI updates immediately via Room Flow
             messageDao.insertMessage(message)
-            // Then send over NC with the message ID for ACK tracking
-            repository.sendNcMessage(endpointId, messageId, text)
+            repository.sendChatMessage(endpointId, messageId, text)
         }
     }
 
@@ -186,8 +185,7 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
                 messageDao.insertMessage(message)
 
                 // Step 8: Send the file via NC (with messageId for ACK tracking)
-                repository.sendNcFile(endpointId, tempFile, fileName, mimeType, messageId)
-
+                repository.sendChatFile(endpointId, tempFile, fileName, mimeType, messageId)
                 // Step 9: File payload dispatched — update to "sent" (✓)
                 messageDao.updateStatus(messageId, "sent")
 

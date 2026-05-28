@@ -20,5 +20,9 @@ data class UserProfile(
     val rssi: Int = 0,
 
     // Timestamp of last discovery (to remove stale users)
-    val lastSeen: Long = System.currentTimeMillis()
+    val lastSeen: Long = System.currentTimeMillis(),
+    // How this user was discovered — determines which transport to use.
+    //   "BLE"        → chat via NC (Nearby Connections / Bluetooth Classic)
+    //   "WIFI_AWARE" → chat via NDP (NAN Data Path / Wi-Fi)
+    val discoverySource: String = "BLE"
 )

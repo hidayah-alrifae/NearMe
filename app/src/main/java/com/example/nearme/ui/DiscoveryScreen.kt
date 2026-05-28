@@ -153,11 +153,19 @@ fun UserCard(user: UserProfile, onUserClick: (String, String) -> Unit) {
             }
 
             // Right side: signal strength
-            Text(
-                text = "${user.rssi} dBm",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+            if (user.discoverySource == "WIFI_AWARE") {
+                Text(
+                    text = "📶 Extended",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            } else {
+                Text(
+                    text = "${user.rssi} dBm",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
 }

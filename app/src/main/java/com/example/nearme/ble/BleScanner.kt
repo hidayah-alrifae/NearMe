@@ -172,7 +172,9 @@ class BleScanner(private val context: Context) {
                 displayName = displayName,
                 status = status,
                 rssi = rssi,
-                lastSeen = System.currentTimeMillis()
+                lastSeen = System.currentTimeMillis(),
+                discoverySource = "BLE"
+
             )
         } catch (e: Exception) {
             Log.e(TAG, "Failed to parse BLE data: ${e.message}")
