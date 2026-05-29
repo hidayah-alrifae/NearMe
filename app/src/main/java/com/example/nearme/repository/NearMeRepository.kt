@@ -23,13 +23,15 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Intent
 import android.os.Build
-import androidx.core.app.NotificationCompat
+import android.app.Notification
 import com.example.nearme.MainActivity
 import com.example.nearme.R
 import com.example.nearme.wifiaware.WifiAwareManager
 import android.util.Log
 import java.io.File
 import androidx.annotation.RequiresApi
+import android.os.Handler
+import android.os.Looper
 
 class NearMeRepository(private val context: Context) {
 
@@ -40,6 +42,8 @@ class NearMeRepository(private val context: Context) {
         NAN_CHAT,         // Active Wi-Fi Aware data path → NC advertise paused
         EXTENDED_SEARCH   // Wi-Fi Aware subscribe ON (manual, temporary)
     }
+
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
     private val _radioState = MutableStateFlow(RadioState.STANDBY)
     val radioState: StateFlow<RadioState> = _radioState.asStateFlow()
@@ -127,13 +131,12 @@ class NearMeRepository(private val context: Context) {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val notification = NotificationCompat.Builder(context, MESSAGE_CHANNEL_ID)
+        val notification = Notification.Builder(context, MESSAGE_CHANNEL_ID)
             .setContentTitle("NearMe")
             .setContentText("New message from $senderShortId")
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
         notificationManager.notify(
             senderShortId.hashCode() + MESSAGE_NOTIFICATION_BASE_ID,
@@ -377,10 +380,13 @@ class NearMeRepository(private val context: Context) {
     fun connectToUser(targetShortId: String) {
         val user = usersMap[targetShortId]
 
-        if (user?.discoverySource == "WIFI_AWARE") {
+        if (user?.discoverySource == "WIFI_AWARE" && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             Log.d("REPO", "Connecting via Wi-Fi Aware NDP to $targetShortId")
             wifiAwareManager.sendChatRequest(targetShortId)
-            wifiAwareManager.startNdpClient(targetShortId)
+            // Delay startNdpClient slightly to let re-subscribe complete if needed
+            mainHandler.postDelayed({
+                wifiAwareManager.startNdpClient(targetShortId)
+            }, 500)
         } else {
             wifiAwareManager.pausePublishing()
             _radioState.value = RadioState.NC_CHAT
@@ -405,7 +411,7 @@ class NearMeRepository(private val context: Context) {
 
     @RequiresApi(Build.VERSION_CODES.Q)
     fun sendChatMessage(endpointId: String, messageId: String, text: String) {
-        if (activeTransport == "NDP") {
+        if (activeTransport == "NDP" && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             wifiAwareManager.sendOverNdp("MSG:$messageId:$text")
         } else {
             nearbyManager.sendMessage(endpointId, messageId, text)
@@ -414,8 +420,7 @@ class NearMeRepository(private val context: Context) {
 
     @RequiresApi(Build.VERSION_CODES.Q)
     fun sendChatFile(endpointId: String, file: File, fileName: String, mimeType: String, messageId: String) {
-        if (activeTransport == "NDP") {
-            Thread {
+        if (activeTransport == "NDP" && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {            Thread {
                 try {
                     val fileBytes = file.readBytes()
                     val chunkSize = 500 * 1024
@@ -436,7 +441,6 @@ class NearMeRepository(private val context: Context) {
             nearbyManager.sendFile(endpointId, file, fileName, mimeType, messageId)
         }
     }
-
     // Called when user leaves the chat screen
     fun disconnectNc(endpointId: String) {
         nearbyManager.disconnect(endpointId)

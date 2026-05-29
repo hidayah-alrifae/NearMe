@@ -330,14 +330,61 @@ class WifiAwareManager(private val context: Context) {
 
     fun sendChatRequest(targetShortId: String) {
         val peerHandle = discoveredPeers[targetShortId]
-        val subSession = subscribeSession
-        if (peerHandle == null || subSession == null) {
-            Log.e(TAG, "Cannot send chat request — missing PeerHandle or session")
+        if (peerHandle == null) {
+            Log.e(TAG, "No PeerHandle for $targetShortId — cannot send chat request")
             return
         }
-        val message = "CHAT_REQ:$localShortId".toByteArray(Charsets.UTF_8)
-        subSession.sendMessage(peerHandle, 0, message)
-        Log.d(TAG, "Sent CHAT_REQ to $targetShortId")
+
+        val subSession = subscribeSession
+        if (subSession != null) {
+            // Subscribe session still active — send directly
+            val message = "CHAT_REQ:$localShortId".toByteArray(Charsets.UTF_8)
+            subSession.sendMessage(peerHandle, 0, message)
+            Log.d(TAG, "Sent CHAT_REQ to $targetShortId")
+        } else {
+            // Subscribe session expired — restart it to send the chat request
+            Log.d(TAG, "Subscribe session expired — restarting to send CHAT_REQ")
+            startSubscribingForChatRequest(targetShortId, peerHandle)
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun startSubscribingForChatRequest(targetShortId: String, peerHandle: PeerHandle) {
+        if (!isSupported || !isAvailable()) return
+
+        attachSession {
+            val currentSession = session ?: return@attachSession
+
+            val config = SubscribeConfig.Builder()
+                .setServiceName(SERVICE_NAME)
+                .setSubscribeType(SubscribeConfig.SUBSCRIBE_TYPE_PASSIVE)
+                .build()
+
+            currentSession.subscribe(config, object : DiscoverySessionCallback() {
+                override fun onSubscribeStarted(session: SubscribeDiscoverySession) {
+                    subscribeSession = session
+                    isSubscribing = true
+                    // Now send the chat request
+                    val message = "CHAT_REQ:$localShortId".toByteArray(Charsets.UTF_8)
+                    session.sendMessage(peerHandle, 0, message)
+                    Log.d(TAG, "Sent CHAT_REQ to $targetShortId (after re-subscribe)")
+                }
+
+                override fun onServiceDiscovered(
+                    ph: PeerHandle, info: ByteArray, filter: List<ByteArray>
+                ) {
+                    val userProfile = parseServiceInfo(info)
+                    if (userProfile != null) {
+                        discoveredPeers[userProfile.shortId] = ph
+                        onUserDiscovered?.invoke(userProfile)
+                    }
+                }
+
+                override fun onSessionTerminated() {
+                    cleanupSubscribe()
+                }
+            }, mainHandler)
+        }
     }
 
     // ─── NDP Server (Publisher/Responder) ─────────────────────────────────

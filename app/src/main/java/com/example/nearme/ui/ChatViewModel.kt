@@ -14,6 +14,8 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import java.io.File
+import android.os.Build
+import androidx.annotation.RequiresApi
 
 /**
  * ChatViewModel manages the active chat session.
@@ -21,6 +23,7 @@ import java.io.File
  * It talks to the repository for NC operations and to
  * MessageDao for database operations.
  */
+@RequiresApi(Build.VERSION_CODES.Q)
 class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
     // Database access for saving and loading messages
