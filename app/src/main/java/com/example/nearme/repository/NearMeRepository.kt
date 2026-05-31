@@ -252,6 +252,48 @@ class NearMeRepository(private val context: Context) {
                     val id = messageText.removePrefix("FILE_ACK:")
                     repositoryScope.launch { messageDao.updateStatus(id, "delivered") }
                 }
+                messageText.startsWith("FILE_START:") -> {
+                    val parts = messageText.removePrefix("FILE_START:").split(":", limit = 4)
+                    if (parts.size == 4) {
+                        val messageId = parts[0]
+                        val fileName = parts[1]
+                        val mimeType = parts[2]
+                        val totalChunks = parts[3].toIntOrNull()
+                        if (totalChunks != null && totalChunks > 0) {
+                            ndpFileAssemblies[messageId] = NdpFileAssembly(
+                                fileName = fileName,
+                                mimeType = mimeType,
+                                totalChunks = totalChunks,
+                                senderShortId = peerShortId
+                            )
+                            Log.d("REPO", "NDP file incoming: $fileName ($totalChunks chunks) from $peerShortId")
+                        }
+                    }
+                }
+                messageText.startsWith("FILE_CHUNK:") -> {
+                    val parts = messageText.removePrefix("FILE_CHUNK:").split(":", limit = 3)
+                    if (parts.size == 3) {
+                        val messageId = parts[0]
+                        val index = parts[1].toIntOrNull()
+                        val base64 = parts[2]
+                        val assembly = ndpFileAssemblies[messageId]
+                        if (assembly != null && index != null && index in 0 until assembly.totalChunks) {
+                            if (assembly.chunks[index] == null) {
+                                try {
+                                    assembly.chunks[index] = android.util.Base64.decode(
+                                        base64, android.util.Base64.NO_WRAP
+                                    )
+                                    assembly.receivedCount++
+                                    if (assembly.receivedCount == assembly.totalChunks) {
+                                        finalizeNdpFile(messageId, assembly)
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e("REPO", "Failed to decode FILE_CHUNK $index: ${e.message}")
+                                }
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -406,17 +448,7 @@ class NearMeRepository(private val context: Context) {
         }
     }
 
-    // Called by ChatViewModel to send a message through the NC connection
-    // Called by ChatViewModel to send a text message with delivery tracking
-    fun sendNcMessage(endpointId: String, messageId: String, message: String) {
-        nearbyManager.sendMessage(endpointId, messageId, message)
-    }
 
-    // Called by ChatViewModel to send a file through the NC connection
-    // Called by ChatViewModel to send a file with delivery tracking
-    fun sendNcFile(endpointId: String, file: File, fileName: String, mimeType: String, messageId: String) {
-        nearbyManager.sendFile(endpointId, file, fileName, mimeType, messageId)
-    }
 
     @RequiresApi(Build.VERSION_CODES.Q)
     fun sendChatMessage(endpointId: String, messageId: String, text: String) {
