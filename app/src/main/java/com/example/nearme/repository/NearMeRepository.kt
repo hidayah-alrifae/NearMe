@@ -258,6 +258,7 @@ class NearMeRepository(private val context: Context) {
         wifiAwareManager.onNdpDisconnected = { peerShortId ->
             Log.d("REPO", "NDP disconnected from $peerShortId")
             activeTransport = null
+            ndpFileAssemblies.clear()
             if (_radioState.value == RadioState.NAN_CHAT) {
                 _radioState.value = RadioState.STANDBY
             }
@@ -449,6 +450,62 @@ class NearMeRepository(private val context: Context) {
             nearbyManager.sendFile(endpointId, file, fileName, mimeType, messageId)
         }
     }
+    @RequiresApi(Build.VERSION_CODES.Q)
+    private fun finalizeNdpFile(messageId: String, assembly: NdpFileAssembly) {
+        ndpFileAssemblies.remove(messageId)
+        // Disk I/O off the main thread.
+        repositoryScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                // Mirror the directory NC uses so saveFileToDevice() in ChatScreen
+                // works identically regardless of which transport delivered the file.
+                val receivedDir = File(context.filesDir, "received_files").apply { mkdirs() }
+                var targetFile = File(receivedDir, assembly.fileName)
+                if (targetFile.exists()) {
+                    val base = assembly.fileName.substringBeforeLast(".", assembly.fileName)
+                    val ext = assembly.fileName.substringAfterLast(".", "")
+                    val unique = if (ext.isNotEmpty())
+                        "${base}_${System.currentTimeMillis()}.$ext"
+                    else
+                        "${assembly.fileName}_${System.currentTimeMillis()}"
+                    targetFile = File(receivedDir, unique)
+                }
+
+                java.io.FileOutputStream(targetFile).use { out ->
+                    for (chunk in assembly.chunks) {
+                        if (chunk != null) out.write(chunk)
+                    }
+                }
+
+                // Insert into Room — identical shape to NC-received files
+                // so the chat UI doesn't need to know which transport was used.
+                val msg = Message(
+                    conversationId = assembly.senderShortId,
+                    senderName = assembly.senderShortId,
+                    content = assembly.fileName,
+                    isFromMe = false,
+                    status = "delivered",
+                    filePath = targetFile.absolutePath,
+                    mimeType = assembly.mimeType
+                )
+                messageDao.insertMessage(msg)
+
+                // ACK back so the sender's "sending ⏳" flips to "delivered ✓✓".
+                wifiAwareManager.sendOverNdp("FILE_ACK:$messageId")
+
+                if (activeConversationId != assembly.senderShortId) {
+                    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                        postMessageNotification(
+                            assembly.senderShortId,
+                            "Sent you a file: ${assembly.fileName}"
+                        )
+                    }
+                }
+                Log.d("REPO", "NDP file saved: ${targetFile.absolutePath} (${targetFile.length()} bytes)")
+            } catch (e: Exception) {
+                Log.e("REPO", "Failed to finalize NDP file: ${e.message}")
+            }
+        }
+    }
     // Called when user leaves the chat screen
     fun disconnectNc(endpointId: String) {
         nearbyManager.disconnect(endpointId)
@@ -509,6 +566,22 @@ class NearMeRepository(private val context: Context) {
         _radioState.value = RadioState.STANDBY
         Log.d("REPO", "Extended search stopped manually")
     }
+
+    // ─── NDP File Reassembly ──────────────────────────────────────────────
+   // One entry per in-flight file transfer, keyed by sender's messageId.
+   // Chunks come in over a single TCP stream so they arrive in order, but
+   // we index them anyway so duplicate/out-of-order would still work.
+    private class NdpFileAssembly(
+        val fileName: String,
+        val mimeType: String,
+        val totalChunks: Int,
+        val senderShortId: String
+    ) {
+        val chunks: Array<ByteArray?> = arrayOfNulls(totalChunks)
+        var receivedCount: Int = 0
+        val startedAt: Long = System.currentTimeMillis()
+    }
+    private val ndpFileAssemblies = mutableMapOf<String, NdpFileAssembly>()
 
     // ─── Singleton ────────────────────────────────────────────────────────────
     companion object {
