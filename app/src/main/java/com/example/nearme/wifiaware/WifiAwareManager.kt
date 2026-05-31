@@ -46,6 +46,8 @@ class WifiAwareManager(private val context: Context) {
 
     val isSupported: Boolean = checkHardwareSupport()
 
+    var onChatRequestSent: ((targetShortId: String) -> Unit)? = null
+
     private val systemManager: SystemWifiAwareManager? =
         if (isSupported) {
             context.getSystemService(Context.WIFI_AWARE_SERVICE) as? SystemWifiAwareManager
@@ -81,13 +83,15 @@ class WifiAwareManager(private val context: Context) {
 
     // ─── NDP State ────────────────────────────────────────────────────────
 
-    private var activeSocket: Socket? = null
-    private var socketOutput: DataOutputStream? = null
+    @Volatile private var activeSocket: Socket? = null
+    @Volatile private var socketOutput: DataOutputStream? = null
     private var serverSocket: ServerSocket? = null
     private var networkCallback: ConnectivityManager.NetworkCallback? = null
     private var ndpPeerShortId: String? = null
     private var readThread: Thread? = null
     private var acceptThread: Thread? = null
+
+
 
     // ─── Discovery Callbacks (existing) ───────────────────────────────────
 
@@ -95,6 +99,14 @@ class WifiAwareManager(private val context: Context) {
     var onSubscribeStopped: (() -> Unit)? = null
 
     // ─── NDP Chat Callbacks (new) ─────────────────────────────────────────
+
+    // NEW: fires when CHAT_ACK is received from publisher → safe to start NDP client
+    var onChatAcked: ((peerShortId: String) -> Unit)? = null
+
+    // Pending L2 message tracking (for retry)
+    private var pendingChatReqTarget: String? = null
+    private var chatReqAttempts = 0
+    private val MAX_CHAT_REQ_ATTEMPTS = 3
 
     var onNdpConnected: ((peerShortId: String) -> Unit)? = null
     var onNdpMessageReceived: ((peerShortId: String, message: String) -> Unit)? = null
@@ -200,15 +212,28 @@ class WifiAwareManager(private val context: Context) {
                     isPublishing = true
                 }
 
-                // NEW: Handle incoming L2 chat requests from subscribers
                 override fun onMessageReceived(peerHandle: PeerHandle, message: ByteArray) {
-                    val msgString = String(message, Charsets.UTF_8)
-                    Log.d(TAG, "Publish received L2 message: $msgString")
-                    if (msgString.startsWith("CHAT_REQ:")) {
-                        val subscriberShortId = msgString.removePrefix("CHAT_REQ:")
+                    val msg = String(message, Charsets.UTF_8)
+                    Log.d(TAG, "Publish RX L2: $msg")
+                    if (msg.startsWith("CHAT_REQ:")) {
+                        val subscriberShortId = msg.removePrefix("CHAT_REQ:")
                         discoveredPeers[subscriberShortId] = peerHandle
+                        // 1. Notify repo to start NDP server
                         onChatRequested?.invoke(subscriberShortId, peerHandle)
+                        // 2. Send CHAT_ACK back so subscriber knows we're ready
+                        val ack = "CHAT_ACK:$localShortId".toByteArray(Charsets.UTF_8)
+                        publishSession?.sendMessage(peerHandle, /*messageId*/ 1, ack)
+                        Log.d(TAG, "Sent CHAT_ACK to $subscriberShortId")
                     }
+                }
+
+                override fun onMessageSendSucceeded(messageId: Int) {
+                    Log.d(TAG, "Publish L2 send OK (id=$messageId)")
+                }
+
+                override fun onMessageSendFailed(messageId: Int) {
+                    Log.w(TAG, "Publish L2 send FAILED (id=$messageId) — peer may not have heard us")
+                    // Could retry CHAT_ACK here; for now log and hope NDP setup succeeds anyway
                 }
 
                 override fun onSessionTerminated() {
@@ -258,7 +283,6 @@ class WifiAwareManager(private val context: Context) {
                     mainHandler.postDelayed(subscribeTimeoutRunnable, SUBSCRIBE_TIMEOUT_MS)
                 }
 
-                // NEW: Store PeerHandle alongside UserProfile
                 override fun onServiceDiscovered(
                     peerHandle: PeerHandle,
                     serviceSpecificInfo: ByteArray,
@@ -268,6 +292,34 @@ class WifiAwareManager(private val context: Context) {
                     if (userProfile != null) {
                         discoveredPeers[userProfile.shortId] = peerHandle
                         onUserDiscovered?.invoke(userProfile)
+                        val target = pendingChatReqTarget
+                        if (target != null && userProfile.shortId == target) {
+                            pendingChatReqTarget = null
+                            sendChatReqWithRetry(target, peerHandle)
+                        }
+                    }
+                }
+
+                override fun onMessageReceived(peerHandle: PeerHandle, message: ByteArray) {
+                    val msg = String(message, Charsets.UTF_8)
+                    Log.d(TAG, "Subscribe RX L2: $msg")
+                    if (msg.startsWith("CHAT_ACK:")) {
+                        val publisherShortId = msg.removePrefix("CHAT_ACK:")
+                        discoveredPeers[publisherShortId] = peerHandle
+                        onChatAcked?.invoke(publisherShortId)
+                    }
+                }
+
+                override fun onMessageSendSucceeded(messageId: Int) {
+                    Log.d(TAG, "Subscribe L2 send OK (id=$messageId)")
+                }
+
+                override fun onMessageSendFailed(messageId: Int) {
+                    Log.w(TAG, "Subscribe L2 send FAILED (id=$messageId)")
+                    val target = ndpPeerShortId ?: return
+                    val handle = discoveredPeers[target] ?: return
+                    if (chatReqAttempts < MAX_CHAT_REQ_ATTEMPTS) {
+                        mainHandler.postDelayed({ sendChatReqWithRetry(target, handle) }, 500)
                     }
                 }
 
@@ -329,62 +381,102 @@ class WifiAwareManager(private val context: Context) {
     // ─── L2 Chat Request ──────────────────────────────────────────────────
 
     fun sendChatRequest(targetShortId: String) {
+        chatReqAttempts = 0
         val peerHandle = discoveredPeers[targetShortId]
-        if (peerHandle == null) {
-            Log.e(TAG, "No PeerHandle for $targetShortId — cannot send chat request")
-            return
-        }
-
         val subSession = subscribeSession
-        if (subSession != null) {
-            // Subscribe session still active — send directly
-            val message = "CHAT_REQ:$localShortId".toByteArray(Charsets.UTF_8)
-            subSession.sendMessage(peerHandle, 0, message)
-            Log.d(TAG, "Sent CHAT_REQ to $targetShortId")
-        } else {
-            // Subscribe session expired — restart it to send the chat request
-            Log.d(TAG, "Subscribe session expired — restarting to send CHAT_REQ")
-            startSubscribingForChatRequest(targetShortId, peerHandle)
+
+        when {
+            subSession != null && peerHandle != null -> {
+                // Subscribe alive + we have a fresh handle → send directly
+                sendChatReqWithRetry(targetShortId, peerHandle)
+            }
+            else -> {
+                // Subscribe died or we never had this peer → re-subscribe and wait for re-discovery
+                Log.d(TAG, "Re-subscribing to find $targetShortId before sending CHAT_REQ")
+                pendingChatReqTarget = targetShortId
+                startSubscribingForChatRequest()
+            }
         }
     }
 
     @SuppressLint("MissingPermission")
-    private fun startSubscribingForChatRequest(targetShortId: String, peerHandle: PeerHandle) {
-        if (!isSupported || !isAvailable()) return
+    private fun sendChatReqWithRetry(targetShortId: String, peerHandle: PeerHandle) {
+        val subSession = subscribeSession ?: return
+        chatReqAttempts++
+        val message = "CHAT_REQ:$localShortId".toByteArray(Charsets.UTF_8)
+        // messageId = 100 + attempt so we can distinguish retries in logs
+        subSession.sendMessage(peerHandle, 100 + chatReqAttempts, message)
+        Log.d(TAG, "Sent CHAT_REQ to $targetShortId (attempt $chatReqAttempts)")
+    }
 
+    @SuppressLint("MissingPermission")
+
+    private fun startSubscribingForChatRequest() {
+        if (!isSupported || !isAvailable()) return
         attachSession {
             val currentSession = session ?: return@attachSession
-
             val config = SubscribeConfig.Builder()
                 .setServiceName(SERVICE_NAME)
                 .setSubscribeType(SubscribeConfig.SUBSCRIBE_TYPE_PASSIVE)
                 .build()
-
+            // Use the SAME callback as startSubscribing() — same code path,
+            // pendingChatReqTarget triggers the CHAT_REQ send on re-discovery.
             currentSession.subscribe(config, object : DiscoverySessionCallback() {
                 override fun onSubscribeStarted(session: SubscribeDiscoverySession) {
                     subscribeSession = session
                     isSubscribing = true
-                    // Now send the chat request
-                    val message = "CHAT_REQ:$localShortId".toByteArray(Charsets.UTF_8)
-                    session.sendMessage(peerHandle, 0, message)
-                    Log.d(TAG, "Sent CHAT_REQ to $targetShortId (after re-subscribe)")
+                    mainHandler.postDelayed(subscribeTimeoutRunnable, SUBSCRIBE_TIMEOUT_MS)
                 }
 
                 override fun onServiceDiscovered(
-                    ph: PeerHandle, info: ByteArray, filter: List<ByteArray>
+                    peerHandle: PeerHandle,
+                    serviceSpecificInfo: ByteArray,
+                    matchFilter: List<ByteArray>
                 ) {
-                    val userProfile = parseServiceInfo(info)
+                    val userProfile = parseServiceInfo(serviceSpecificInfo)
                     if (userProfile != null) {
-                        discoveredPeers[userProfile.shortId] = ph
+                        discoveredPeers[userProfile.shortId] = peerHandle
                         onUserDiscovered?.invoke(userProfile)
+                        val target = pendingChatReqTarget
+                        if (target != null && userProfile.shortId == target) {
+                            pendingChatReqTarget = null
+                            sendChatReqWithRetry(target, peerHandle)
+                        }
                     }
+                }
+
+                override fun onMessageReceived(peerHandle: PeerHandle, message: ByteArray) {
+                    val msg = String(message, Charsets.UTF_8)
+                    Log.d(TAG, "Subscribe RX L2: $msg")
+                    if (msg.startsWith("CHAT_ACK:")) {
+                        val publisherShortId = msg.removePrefix("CHAT_ACK:")
+                        discoveredPeers[publisherShortId] = peerHandle
+                        onChatAcked?.invoke(publisherShortId)
+                    }
+                }
+
+                override fun onMessageSendSucceeded(messageId: Int) {
+                    Log.d(TAG, "Subscribe L2 send OK (id=$messageId)")
+                }
+
+                override fun onMessageSendFailed(messageId: Int) {
+                    Log.w(TAG, "Subscribe L2 send FAILED (id=$messageId)")
+                    val target = ndpPeerShortId ?: return
+                    val handle = discoveredPeers[target] ?: return
+                    if (chatReqAttempts < MAX_CHAT_REQ_ATTEMPTS) {
+                        mainHandler.postDelayed({ sendChatReqWithRetry(target, handle) }, 500)
+                    }
+                }
+
+                override fun onServiceLost(peerHandle: PeerHandle, reason: Int) {
+                    Log.d(TAG, "Service lost (reason=$reason)")
                 }
 
                 override fun onSessionTerminated() {
                     cleanupSubscribe()
                 }
-            }, mainHandler)
-        }
+            }, mainHandler)        }
+
     }
 
     // ─── NDP Server (Publisher/Responder) ─────────────────────────────────
@@ -399,9 +491,12 @@ class WifiAwareManager(private val context: Context) {
         ndpPeerShortId = peerShortId
 
         try {
-            serverSocket = ServerSocket(0)
+
+            serverSocket = ServerSocket().apply {
+                bind(java.net.InetSocketAddress("::", 0))   // IPv6 wildcard, any port
+            }
             val port = serverSocket!!.localPort
-            Log.d(TAG, "NDP ServerSocket opened on port $port")
+            Log.d(TAG, "NDP ServerSocket opened on IPv6 port $port")
 
             val specifier = WifiAwareNetworkSpecifier.Builder(pubSession, peerHandle)
                 .setPskPassphrase(NDP_PASSPHRASE)
@@ -419,6 +514,8 @@ class WifiAwareManager(private val context: Context) {
                     acceptThread = Thread {
                         try {
                             val socket = serverSocket!!.accept()
+                            // After getting the socket on both server-accept and client-connect paths:
+                            socket.tcpNoDelay = true
                             activeSocket = socket
                             socketOutput = DataOutputStream(socket.getOutputStream())
                             mainHandler.post { onNdpConnected?.invoke(peerShortId) }
@@ -485,6 +582,8 @@ class WifiAwareManager(private val context: Context) {
                     Thread {
                         try {
                             val socket = network.socketFactory.createSocket(peerIpv6, peerPort)
+                            // After getting the socket on both server-accept and client-connect paths:
+                            socket.tcpNoDelay = true
                             activeSocket = socket
                             socketOutput = DataOutputStream(socket.getOutputStream())
                             mainHandler.post { onNdpConnected?.invoke(targetShortId) }
@@ -502,6 +601,13 @@ class WifiAwareManager(private val context: Context) {
                 }
             }
             networkCallback = callback
+            mainHandler.postDelayed({
+                if (activeSocket == null && ndpPeerShortId == targetShortId) {
+                    Log.w(TAG, "NDP setup timed out after 15s — cleaning up")
+                    handleNdpDisconnection()
+                }
+            }, 15_000)
+
             connectivityManager.requestNetwork(request, callback)
 
         } catch (e: Exception) {

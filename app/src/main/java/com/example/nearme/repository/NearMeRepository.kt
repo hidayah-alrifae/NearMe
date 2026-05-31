@@ -371,7 +371,12 @@ class NearMeRepository(private val context: Context) {
 
     // Add this method to NearMeRepository
     fun getEndpointForShortId(shortId: String): String? {
-        return nearbyManager.getEndpointForShortId(shortId)
+        nearbyManager.getEndpointForShortId(shortId)?.let { return it }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
+            && wifiAwareManager.isNdpConnectedTo(shortId)) {
+            return "NDP_$shortId"
+        }
+        return null
     }
 
     // Called by ChatViewModel when user taps a person to start chatting.
@@ -381,12 +386,15 @@ class NearMeRepository(private val context: Context) {
         val user = usersMap[targetShortId]
 
         if (user?.discoverySource == "WIFI_AWARE" && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            Log.d("REPO", "Connecting via Wi-Fi Aware NDP to $targetShortId")
+            Log.d("REPO", "Initiating NDP to $targetShortId — sending CHAT_REQ, awaiting CHAT_ACK")
+            wifiAwareManager.onChatAcked = { acker ->
+                if (acker == targetShortId) {
+                    Log.d("REPO", "Received CHAT_ACK from $targetShortId — starting NDP client")
+                    wifiAwareManager.startNdpClient(targetShortId)
+                    wifiAwareManager.onChatAcked = null
+                }
+            }
             wifiAwareManager.sendChatRequest(targetShortId)
-            // Delay startNdpClient slightly to let re-subscribe complete if needed
-            mainHandler.postDelayed({
-                wifiAwareManager.startNdpClient(targetShortId)
-            }, 500)
         } else {
             wifiAwareManager.pausePublishing()
             _radioState.value = RadioState.NC_CHAT
