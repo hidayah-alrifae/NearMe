@@ -108,7 +108,6 @@ class WifiAwareManager(private val context: Context) {
     // Pending L2 message tracking (for retry)
     private var pendingChatReqTarget: String? = null
     private var chatReqAttempts = 0
-    private val MAX_CHAT_REQ_ATTEMPTS = 3
 
     var onNdpConnected: ((peerShortId: String) -> Unit)? = null
     var onNdpMessageReceived: ((peerShortId: String, message: String) -> Unit)? = null
@@ -619,12 +618,6 @@ class WifiAwareManager(private val context: Context) {
                 }
             }
             networkCallback = callback
-            mainHandler.postDelayed({
-                if (activeSocket == null && ndpPeerShortId == targetShortId) {
-                    Log.w(TAG, "NDP setup timed out after 15s — cleaning up")
-                    handleNdpDisconnection()
-                }
-            }, 15_000)
 
             connectivityManager.requestNetwork(request, callback)
             // Wi-Fi Aware framework occasionally accepts a requestNetwork without ever
