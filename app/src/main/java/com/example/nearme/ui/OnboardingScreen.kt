@@ -86,7 +86,7 @@ fun OnboardingScreen(onComplete: () -> Unit) {
                     text = titles[page],
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onBackground,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
                     textAlign = TextAlign.Center
                 )
 

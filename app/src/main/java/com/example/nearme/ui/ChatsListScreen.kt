@@ -1,0 +1,190 @@
+package com.example.nearme.ui
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
+import java.text.SimpleDateFormat
+import java.util.*
+
+@Composable
+fun ChatsListScreen(
+    viewModel: ChatsListViewModel = viewModel(),
+    onChatClick: (String, String) -> Unit,
+    onNavigateTab: (NavTab) -> Unit
+) {
+    val chats by viewModel.chats.collectAsState()
+
+    Column(modifier = Modifier.fillMaxSize()) {
+
+        // ── Header ───────────────────────────────────
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Chats",
+                fontSize = 24.sp,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        // ── Body ─────────────────────────────────────
+        Box(modifier = Modifier.weight(1f)) {
+            if (chats.isEmpty()) {
+                EmptyChatsState()
+            } else {
+                LazyColumn(
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    items(chats) { chat ->
+                        ChatRow(chat, onChatClick)
+                    }
+                }
+            }
+        }
+
+        // ── Bottom nav ───────────────────────────────
+        NearMeBottomNav(selected = NavTab.CHATS, onTabSelected = onNavigateTab)
+    }
+}
+
+@Composable
+private fun ChatRow(
+    chat: ChatSummary,
+    onClick: (String, String) -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick(chat.conversationId, chat.displayName) },
+        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Avatar + presence dot
+            Box {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .background(
+                            brush = Brush.linearGradient(
+                                listOf(Color(0xFF4C1D95), Color(0xFF0369A1))
+                            ),
+                            shape = CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = chat.displayName.take(2).uppercase(),
+                        color = Color.White,
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 15.sp
+                    )
+                }
+                if (chat.isOnline) {
+                    Box(
+                        modifier = Modifier
+                            .size(13.dp)
+                            .align(Alignment.BottomEnd)
+                            .background(MaterialTheme.colorScheme.surface, CircleShape)
+                            .padding(2.dp)
+                            .background(Color(0xFF1D9E75), CircleShape)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = chat.displayName,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = formatTime(chat.timestamp),
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    text = chat.lastMessage,
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun EmptyChatsState() {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(80.dp)
+                .background(
+                    MaterialTheme.colorScheme.primaryContainer,
+                    CircleShape
+                ),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("💬", fontSize = 36.sp)
+        }
+        Spacer(modifier = Modifier.height(16.dp))
+        Text(
+            text = "No conversations yet",
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = "Discover someone nearby to start chatting",
+            fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+    }
+}
+
+/** "10:32" if today, else "12 Mar" */
+private fun formatTime(timestamp: Long): String {
+    val now = Calendar.getInstance()
+    val then = Calendar.getInstance().apply { timeInMillis = timestamp }
+    val isToday = now.get(Calendar.YEAR) == then.get(Calendar.YEAR) &&
+            now.get(Calendar.DAY_OF_YEAR) == then.get(Calendar.DAY_OF_YEAR)
+    val fmt = if (isToday) SimpleDateFormat("HH:mm", Locale.getDefault())
+    else SimpleDateFormat("dd MMM", Locale.getDefault())
+    return fmt.format(Date(timestamp))
+}
