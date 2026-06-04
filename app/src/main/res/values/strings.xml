@@ -92,4 +92,11 @@
     <string name="notif_service_title">NearMe is running</string>
     <string name="notif_service_text">Discovering nearby people in the background.</string>
     <string name="notif_message_title">New message from %1$s</string>
+
+    <!-- Delete actions -->
+    <string name="delete_chat_title">Delete chat?</string>
+    <string name="delete_chat_message">This will permanently remove your conversation with %1$s from this phone.</string>
+    <string name="delete_message_title">Delete message?</string>
+    <string name="delete_message_body">This message will be removed from your phone. The other person will still have their copy.</string>
+    <string name="common_delete">Delete</string>
 </resources>

@@ -24,6 +24,8 @@ import com.example.nearme.util.rememberTotalUnreadCount
 import com.example.nearme.util.rememberUnreadFor
 import androidx.compose.ui.res.stringResource
 import com.example.nearme.R
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 
 
 @Composable
@@ -34,6 +36,7 @@ fun ChatsListScreen(
 ) {
     val chats by viewModel.chats.collectAsState()
     val unread by rememberTotalUnreadCount()
+    var chatToDelete by remember { mutableStateOf<ChatSummary?>(null) }
 
     Column(
         modifier = Modifier
@@ -67,7 +70,11 @@ fun ChatsListScreen(
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     items(chats) { chat ->
-                        ChatRow(chat, onChatClick)
+                        ChatRow(
+                            chat = chat,
+                            onClick = onChatClick,
+                            onLongPress = { chatToDelete = it }
+                        )
                     }
                 }
             }
@@ -80,18 +87,49 @@ fun ChatsListScreen(
             onTabSelected = onNavigateTab
         )
     }
+    // ── Delete chat confirmation ────────────────────
+    chatToDelete?.let { chat ->
+        AlertDialog(
+            onDismissRequest = { chatToDelete = null },
+            title = { Text(stringResource(R.string.delete_chat_title)) },
+            text = {
+                Text(stringResource(R.string.delete_chat_message, chat.displayName))
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteConversation(chat.conversationId)
+                    chatToDelete = null
+                }) {
+                    Text(
+                        stringResource(R.string.common_delete),
+                        color = Color(0xFFE24B4A)
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { chatToDelete = null }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            }
+        )
+    }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ChatRow(
     chat: ChatSummary,
-    onClick: (String, String) -> Unit
+    onClick: (String, String) -> Unit,
+    onLongPress: (ChatSummary) -> Unit
 ) {
     val unreadForThisChat by rememberUnreadFor(chat.conversationId)
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick(chat.conversationId, chat.displayName) },
+            .combinedClickable(
+                onClick = { onClick(chat.conversationId, chat.displayName) },
+                onLongClick = { onLongPress(chat) }
+            ),
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(12.dp)
     ) {

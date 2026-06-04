@@ -244,4 +244,10 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
             repository.setActiveConversation(convId)
         }
     }
+    /** Deletes a single message from this conversation. */
+    fun deleteMessage(messageId: String) {
+        viewModelScope.launch {
+            messageDao.deleteMessage(messageId)
+        }
+    }
 }

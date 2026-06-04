@@ -40,6 +40,8 @@ import androidx.compose.foundation.layout.imePadding
 import android.annotation.SuppressLint
 import androidx.compose.ui.res.stringResource
 import com.example.nearme.R
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 
 @Composable
 @SuppressLint("NewApi")
@@ -53,6 +55,7 @@ fun ChatScreen(
     var inputText by remember { mutableStateOf("") }
     val isConnected by viewModel.isConnected.collectAsState()
     val messages by viewModel.messages.collectAsState()
+    var messageToDelete by remember { mutableStateOf<Message?>(null) }
     val resolvedName = remember(messages, contactName, contactShortId) {
         if (contactName != contactShortId && contactName.isNotBlank()) {
             contactName
@@ -198,7 +201,11 @@ fun ChatScreen(
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             items(messages.reversed(), key = { it.id }) { msg ->
-                MessageBubble(msg, context)
+                MessageBubble(
+                    message = msg,
+                    context = context,
+                    onLongPress = { messageToDelete = it }
+                )
             }
         }
 
@@ -295,13 +302,41 @@ fun ChatScreen(
             }
         }
     }
+// ── Delete message confirmation ─────────────────
+    messageToDelete?.let { msg ->
+        AlertDialog(
+            onDismissRequest = { messageToDelete = null },
+            title = { Text(stringResource(R.string.delete_message_title)) },
+            text = { Text(stringResource(R.string.delete_message_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteMessage(msg.id)
+                    messageToDelete = null
+                }) {
+                    Text(
+                        stringResource(R.string.common_delete),
+                        color = Color(0xFFE24B4A)
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { messageToDelete = null }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            }
+        )
+    }
 }
 
 // ── Message bubble ──────────────────────────────────
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun MessageBubble(message: Message, context: android.content.Context) {
+private fun MessageBubble(
+    message: Message,
+    context: android.content.Context,
+    onLongPress: (Message) -> Unit
+) {
     val isMine = message.isFromMe
-    val alignment = if (isMine) Alignment.End else Alignment.Start
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -310,6 +345,10 @@ private fun MessageBubble(message: Message, context: android.content.Context) {
         Column(
             modifier = Modifier
                 .widthIn(max = 280.dp)
+                .combinedClickable(
+                    onClick = { },
+                    onLongClick = { onLongPress(message) }
+                )
                 .background(
                     brush = if (isMine) Brush.linearGradient(
                         listOf(Color(0xFF4C1D95), Color(0xFF0369A1))

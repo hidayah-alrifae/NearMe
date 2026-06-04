@@ -73,4 +73,10 @@ class ChatsListViewModel(application: Application) : AndroidViewModel(applicatio
             else -> m.content
         }
     }
+    /** Deletes every message belonging to this conversation. */
+    fun deleteConversation(conversationId: String) {
+        viewModelScope.launch {
+            messageDao.deleteConversation(conversationId)
+        }
+    }
 }

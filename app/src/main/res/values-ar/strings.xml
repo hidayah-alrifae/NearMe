@@ -92,4 +92,11 @@
     <string name="notif_service_title">NearMe قيد التشغيل</string>
     <string name="notif_service_text">جارٍ البحث عن الأشخاص القريبين في الخلفية.</string>
     <string name="notif_message_title">رسالة جديدة من %1$s</string>
+
+    <!-- Delete actions -->
+    <string name="delete_chat_title">حذف المحادثة؟</string>
+    <string name="delete_chat_message">سيؤدي ذلك إلى حذف محادثتك مع %1$s نهائياً من هذا الهاتف.</string>
+    <string name="delete_message_title">حذف الرسالة؟</string>
+    <string name="delete_message_body">ستُحذف هذه الرسالة من هاتفك. ستبقى نسخة الطرف الآخر لديه.</string>
+    <string name="common_delete">حذف</string>
 </resources>
