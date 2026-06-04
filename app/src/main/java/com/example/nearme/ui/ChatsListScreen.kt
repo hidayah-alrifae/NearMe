@@ -22,7 +22,8 @@ import java.text.SimpleDateFormat
 import java.util.*
 import com.example.nearme.util.rememberTotalUnreadCount
 import com.example.nearme.util.rememberUnreadFor
-
+import androidx.compose.ui.res.stringResource
+import com.example.nearme.R
 
 
 @Composable
@@ -44,7 +45,7 @@ fun ChatsListScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = "Chats",
+                text = stringResource(R.string.chats_title),
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -192,14 +193,14 @@ private fun EmptyChatsState() {
         }
         Spacer(modifier = Modifier.height(16.dp))
         Text(
-            text = "No conversations yet",
+            text = stringResource(R.string.chats_empty_title),
             fontSize = 16.sp,
             fontWeight = FontWeight.Medium,
             color = MaterialTheme.colorScheme.onSurface
         )
         Spacer(modifier = Modifier.height(6.dp))
         Text(
-            text = "Discover someone nearby to start chatting",
+            text = stringResource(R.string.chats_empty_subtitle),
             fontSize = 13.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )

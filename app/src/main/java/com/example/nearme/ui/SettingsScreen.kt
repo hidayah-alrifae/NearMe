@@ -20,6 +20,8 @@ import androidx.compose.ui.unit.sp
 import com.example.nearme.util.AppPreferences
 import com.example.nearme.util.LocalAuth
 import com.example.nearme.util.rememberTotalUnreadCount
+import androidx.compose.ui.res.stringResource
+import com.example.nearme.R
 
 @Composable
 fun SettingsScreen(onNavigateTab: (NavTab) -> Unit) {
@@ -43,7 +45,7 @@ fun SettingsScreen(onNavigateTab: (NavTab) -> Unit) {
 
         // ── Header ───────────────────────────────────
         Text(
-            text = "Settings",
+            text = stringResource(R.string.settings_title),
             fontSize = 24.sp,
             fontWeight = FontWeight.Medium,
             color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -108,8 +110,8 @@ fun SettingsScreen(onNavigateTab: (NavTab) -> Unit) {
             // ── Appearance (Theme) ───────────────────
             SectionTitle("Appearance")
             SegmentedRow(
-                label = "Theme",
-                options = listOf("System", "Light", "Dark"),
+                label = stringResource(R.string.settings_theme),
+                options = listOf(stringResource(R.string.settings_theme_system), stringResource(R.string.settings_theme_light), stringResource(R.string.settings_theme_dark)),
                 selectedIndex = when (themeMode) {
                     AppPreferences.ThemeMode.SYSTEM -> 0
                     AppPreferences.ThemeMode.LIGHT  -> 1
@@ -130,7 +132,7 @@ fun SettingsScreen(onNavigateTab: (NavTab) -> Unit) {
             // ── Language ─────────────────────────────
             SectionTitle("Language")
             SegmentedRow(
-                label = "Language",
+                label = stringResource(R.string.settings_language),
                 options = listOf("English", "العربية"),
                 selectedIndex = if (language == AppPreferences.Language.ARABIC) 1 else 0,
                 onSelect = { idx ->
@@ -175,7 +177,7 @@ fun SettingsScreen(onNavigateTab: (NavTab) -> Unit) {
     if (editing) {
         AlertDialog(
             onDismissRequest = { editing = false },
-            title = { Text("Edit display name") },
+            title = { Text(stringResource(R.string.settings_display_name)) },
             text = {
                 OutlinedTextField(
                     value = draftName,

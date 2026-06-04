@@ -26,6 +26,8 @@ import kotlin.math.cos
 import kotlin.math.sin
 import androidx.compose.foundation.layout.statusBarsPadding
 import com.example.nearme.util.rememberTotalUnreadCount
+import androidx.compose.ui.res.stringResource
+import com.example.nearme.R
 
 
 @Composable
@@ -80,7 +82,7 @@ fun DiscoveryScreen(
                 .padding(horizontal = 20.dp)
         ) {
             Text(
-                text = if (nearbyUsers.isEmpty()) "No one nearby yet"
+                text = if (nearbyUsers.isEmpty()) stringResource(R.string.discovery_no_one)
                 else "${nearbyUsers.size} ${if (nearbyUsers.size == 1) "person" else "people"} nearby",
                 fontSize = 14.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -255,7 +257,7 @@ private fun ExtendedSearchButton(isSearching: Boolean, onClick: () -> Unit) {
                 Spacer(modifier = Modifier.width(8.dp))
             }
             Text(
-                text = if (isSearching) "Searching further…" else "Extended search",
+                text = if (isSearching) stringResource(R.string.discovery_search_further) else "Extended search",
                 color = Color.White,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium

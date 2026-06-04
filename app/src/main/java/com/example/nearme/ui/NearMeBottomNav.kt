@@ -20,6 +20,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
+import com.example.nearme.R
 
 enum class NavTab { DISCOVER, CHATS, SETTINGS }
 
@@ -43,7 +45,7 @@ fun NearMeBottomNav(
         ) {
             NavItem(
                 isActive = selected == NavTab.DISCOVER,
-                label = "Discover",
+                label = stringResource(R.string.nav_discover),
                 onClick = { onTabSelected(NavTab.DISCOVER) }
             ) { active ->
                 RadarIcon(size = 18.dp, color = if (active) Color.White else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -51,7 +53,7 @@ fun NearMeBottomNav(
 
             NavItem(
                 isActive = selected == NavTab.CHATS,
-                label = "Chats",
+                label = stringResource(R.string.nav_chats),
                 badge = chatsUnreadCount,
                 onClick = { onTabSelected(NavTab.CHATS) }
             ) { active ->
@@ -61,7 +63,7 @@ fun NearMeBottomNav(
 
             NavItem(
                 isActive = selected == NavTab.SETTINGS,
-                label = "Settings",
+                label = stringResource(R.string.nav_settings),
                 onClick = { onTabSelected(NavTab.SETTINGS) }
             ) { active ->
                 Text("⚙", fontSize = if (active) 16.sp else 18.sp,

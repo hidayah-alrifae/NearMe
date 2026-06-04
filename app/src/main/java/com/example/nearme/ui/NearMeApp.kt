@@ -13,6 +13,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.nearme.service.NearMeService
 import com.example.nearme.util.AppPreferences
+import androidx.activity.compose.LocalActivityResultRegistryOwner
+import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
+import androidx.activity.ComponentActivity
 
 @SuppressLint("NewApi")
 @Composable
@@ -26,7 +29,22 @@ fun NearMeApp() {
     val direction = if (language == AppPreferences.Language.ARABIC)
         LayoutDirection.Rtl else LayoutDirection.Ltr
 
-    CompositionLocalProvider(LocalLayoutDirection provides direction) {
+    val locale = if (language == AppPreferences.Language.ARABIC)
+        java.util.Locale("ar") else java.util.Locale("en")
+    val localeContext = remember(locale) {
+        val config = android.content.res.Configuration(context.resources.configuration)
+        config.setLocale(locale)
+        context.createConfigurationContext(config)
+    }
+
+    val activity = context as androidx.activity.ComponentActivity
+
+    CompositionLocalProvider(
+        LocalLayoutDirection provides direction,
+        LocalContext provides localeContext,
+        androidx.activity.compose.LocalActivityResultRegistryOwner provides activity,
+        androidx.activity.compose.LocalOnBackPressedDispatcherOwner provides activity
+    ) {
         NavHost(
             navController = navController,
             startDestination = "splash"

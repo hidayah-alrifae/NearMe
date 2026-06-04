@@ -38,6 +38,8 @@ import com.example.nearme.util.UnreadStore
 import java.io.File
 import androidx.compose.foundation.layout.imePadding
 import android.annotation.SuppressLint
+import androidx.compose.ui.res.stringResource
+import com.example.nearme.R
 
 @Composable
 @SuppressLint("NewApi")
@@ -160,7 +162,7 @@ fun ChatScreen(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = if (isConnected) "Connected" else "Connecting…",
+                        text = if (isConnected) stringResource(R.string.chat_connected) else stringResource(R.string.chat_connecting),
                         fontSize = 12.sp,
                         color = if (isConnected) Color(0xFF1D9E75)
                         else MaterialTheme.colorScheme.onSurfaceVariant
@@ -178,7 +180,7 @@ fun ChatScreen(
                     .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
                 Text(
-                    text = "Connecting to $resolvedName… messages will send once linked.",
+                    text = stringResource(R.string.chat_out_of_range_banner, resolvedName),
                     fontSize = 12.sp,
                     color = Color(0xFF8A5A00)
                 )
@@ -242,7 +244,7 @@ fun ChatScreen(
                 ) {
                     if (inputText.isEmpty()) {
                         Text(
-                            text = "Type a message…",
+                            text = stringResource(R.string.chat_input_placeholder),
                             fontSize = 14.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
