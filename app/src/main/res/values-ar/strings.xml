@@ -88,6 +88,13 @@
     <string name="settings_section_about">حول التطبيق</string>
     <string name="settings_version">الإصدار</string>
 
+    <!-- Settings screen sections -->
+    <string name="settings_section_account">الحساب</string>
+    <string name="settings_section_language">اللغة</string>
+    <string name="settings_language_note">تغيير لغة التطبيق. سيتم إعادة تحميل الشاشة.</string>
+    <string name="settings_privacy_note">NearMe يعمل بدون إنترنت. رسائلك وهويتك لا تغادر هاتفك أبداً.</string>
+    <string name="settings_edit_name_label">الاسم</string>
+
     <!-- Common -->
     <string name="common_cancel">إلغاء</string>
     <string name="common_ok">حسناً</string>

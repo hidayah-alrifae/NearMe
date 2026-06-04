@@ -3,6 +3,7 @@ package com.example.nearme.util
 import android.content.Context
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import android.app.Activity
 
 object AppPreferences {
 
@@ -40,5 +41,6 @@ object AppPreferences {
         _language.value = lang
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putString(KEY_LANG, lang.name).apply()
+        (context as? Activity)?.recreate()
     }
 }

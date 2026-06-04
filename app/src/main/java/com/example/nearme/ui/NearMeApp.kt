@@ -29,19 +29,12 @@ fun NearMeApp() {
     val direction = if (language == AppPreferences.Language.ARABIC)
         LayoutDirection.Rtl else LayoutDirection.Ltr
 
-    val locale = if (language == AppPreferences.Language.ARABIC)
-        java.util.Locale("ar") else java.util.Locale("en")
-    val localeContext = remember(locale) {
-        val config = android.content.res.Configuration(context.resources.configuration)
-        config.setLocale(locale)
-        context.createConfigurationContext(config)
-    }
+
 
     val activity = context as androidx.activity.ComponentActivity
 
     CompositionLocalProvider(
         LocalLayoutDirection provides direction,
-        LocalContext provides localeContext,
         androidx.activity.compose.LocalActivityResultRegistryOwner provides activity,
         androidx.activity.compose.LocalOnBackPressedDispatcherOwner provides activity
     ) {

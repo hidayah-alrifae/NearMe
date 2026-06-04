@@ -100,15 +100,15 @@ fun SettingsScreen(onNavigateTab: (NavTab) -> Unit) {
             Spacer(modifier = Modifier.height(20.dp))
 
             // ── Account ──────────────────────────────
-            SectionTitle("Account")
-            SettingRow(label = "Display name", value = displayName) {
+            SectionTitle(stringResource(R.string.settings_section_account))
+            SettingRow(label = stringResource(R.string.settings_display_name), value = displayName) {
                 draftName = displayName; editing = true
             }
 
             Spacer(modifier = Modifier.height(20.dp))
 
             // ── Appearance (Theme) ───────────────────
-            SectionTitle("Appearance")
+            SectionTitle(stringResource(R.string.settings_section_appearance))
             SegmentedRow(
                 label = stringResource(R.string.settings_theme),
                 options = listOf(stringResource(R.string.settings_theme_system), stringResource(R.string.settings_theme_light), stringResource(R.string.settings_theme_dark)),
@@ -130,7 +130,7 @@ fun SettingsScreen(onNavigateTab: (NavTab) -> Unit) {
             Spacer(modifier = Modifier.height(20.dp))
 
             // ── Language ─────────────────────────────
-            SectionTitle("Language")
+            SectionTitle(stringResource(R.string.settings_section_language))
             SegmentedRow(
                 label = stringResource(R.string.settings_language),
                 options = listOf("English", "العربية"),
@@ -142,7 +142,7 @@ fun SettingsScreen(onNavigateTab: (NavTab) -> Unit) {
                 }
             )
             Text(
-                text = "Switching to العربية mirrors the layout right-to-left. Full text translation will follow.",
+                text = stringResource(R.string.settings_language_note),
                 fontSize = 11.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 4.dp, top = 6.dp)
@@ -151,13 +151,13 @@ fun SettingsScreen(onNavigateTab: (NavTab) -> Unit) {
             Spacer(modifier = Modifier.height(20.dp))
 
             // ── About ────────────────────────────────
-            SectionTitle("About")
-            SettingRow(label = "Version", value = "1.0") {}
+            SectionTitle(stringResource(R.string.settings_section_about))
+            SettingRow(label = stringResource(R.string.settings_version), value = "1.0") {}
 
             Spacer(modifier = Modifier.height(20.dp))
 
             Text(
-                text = "NearMe works fully offline. Your messages and identity never leave your phone.",
+                text = stringResource(R.string.settings_privacy_note),
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 4.dp)
@@ -183,7 +183,7 @@ fun SettingsScreen(onNavigateTab: (NavTab) -> Unit) {
                     value = draftName,
                     onValueChange = { if (it.length <= 20) draftName = it },
                     singleLine = true,
-                    label = { Text("Name") }
+                    label = { Text(stringResource(R.string.settings_edit_name_label)) }
                 )
             },
             confirmButton = {
@@ -194,10 +194,10 @@ fun SettingsScreen(onNavigateTab: (NavTab) -> Unit) {
                         displayName = trimmed
                     }
                     editing = false
-                }) { Text("Save") }
+                }) { Text(stringResource(R.string.common_save)) }
             },
             dismissButton = {
-                TextButton(onClick = { editing = false }) { Text("Cancel") }
+                TextButton(onClick = { editing = false }) { Text(stringResource(R.string.common_cancel)) }
             }
         )
     }

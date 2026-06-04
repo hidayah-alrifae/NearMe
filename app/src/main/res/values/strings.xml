@@ -88,6 +88,13 @@
     <string name="settings_section_about">About</string>
     <string name="settings_version">Version</string>
 
+    <!-- Settings screen sections -->
+    <string name="settings_section_account">Account</string>
+    <string name="settings_section_language">Language</string>
+    <string name="settings_language_note">Change the app language. The screen will reload.</string>
+    <string name="settings_privacy_note">NearMe works fully offline. Your messages and identity never leave your phone.</string>
+    <string name="settings_edit_name_label">Name</string>
+
     <!-- Common -->
     <string name="common_cancel">Cancel</string>
     <string name="common_ok">OK</string>
