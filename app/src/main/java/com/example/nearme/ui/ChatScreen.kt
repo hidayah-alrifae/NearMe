@@ -36,8 +36,11 @@ import androidx.compose.ui.unit.sp
 import com.example.nearme.model.Message
 import com.example.nearme.util.UnreadStore
 import java.io.File
+import androidx.compose.foundation.layout.imePadding
+import android.annotation.SuppressLint
 
 @Composable
+@SuppressLint("NewApi")
 fun ChatScreen(
     viewModel: ChatViewModel,
     contactName: String,
@@ -48,6 +51,17 @@ fun ChatScreen(
     var inputText by remember { mutableStateOf("") }
     val isConnected by viewModel.isConnected.collectAsState()
     val messages by viewModel.messages.collectAsState()
+    val resolvedName = remember(messages, contactName, contactShortId) {
+        if (contactName != contactShortId && contactName.isNotBlank()) {
+            contactName
+        } else {
+            messages
+                .filter { !it.isFromMe && it.senderName.isNotBlank() }
+                .maxByOrNull { it.timestamp }
+                ?.senderName
+                ?: contactShortId
+        }
+    }
     val listState = rememberLazyListState()
     val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
 
@@ -82,6 +96,7 @@ fun ChatScreen(
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
+            .imePadding()
             .background(MaterialTheme.colorScheme.background)
     ) {
 
@@ -116,7 +131,7 @@ fun ChatScreen(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = contactName.take(2).uppercase(),
+                            text = resolvedName.take(2).uppercase(),
                             color = Color.White,
                             fontWeight = FontWeight.Medium,
                             fontSize = 14.sp
@@ -139,7 +154,7 @@ fun ChatScreen(
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = contactName,
+                        text = resolvedName,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurface
@@ -163,7 +178,7 @@ fun ChatScreen(
                     .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
                 Text(
-                    text = "Connecting to $contactName… messages will send once linked.",
+                    text = "Connecting to $resolvedName… messages will send once linked.",
                     fontSize = 12.sp,
                     color = Color(0xFF8A5A00)
                 )

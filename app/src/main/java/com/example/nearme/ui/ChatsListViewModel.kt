@@ -42,9 +42,15 @@ class ChatsListViewModel(application: Application) : AndroidViewModel(applicatio
                     .map { (convId, msgs) ->
                         val last = msgs.maxByOrNull { it.timestamp }!!
                         val onlineUser = nearbyIds[convId]
+
+                        val cachedName = msgs
+                            .filter { !it.isFromMe && it.senderName.isNotBlank() }
+                            .maxByOrNull { it.timestamp }
+                            ?.senderName
+
                         ChatSummary(
                             conversationId = convId,
-                            displayName = onlineUser?.displayName ?: convId,
+                            displayName = onlineUser?.displayName ?: cachedName ?: convId,
                             lastMessage = preview(last),
                             timestamp = last.timestamp,
                             isOnline = onlineUser != null,

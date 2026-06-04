@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App identity -->
+    <string name="app_name">NearMe</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_title_1">اكتشف من حولك</string>
+    <string name="onboarding_desc_1">اعثر على المستخدمين القريبين منك في الوقت الحقيقي عبر البلوتوث — دون الحاجة إلى الإنترنت.</string>
+    <string name="onboarding_title_2">تواصل بدون إنترنت</string>
+    <string name="onboarding_desc_2">أرسل الرسائل والملفات مباشرة بين الأجهزة عبر اتصال خاص من نظير إلى نظير.</string>
+    <string name="onboarding_title_3">بياناتك تبقى معك</string>
+    <string name="onboarding_desc_3">لا خوادم. لا حسابات. لا شيء يغادر جهازك إلا إذا أرسلته بنفسك.</string>
+    <string name="onboarding_get_started">ابدأ الآن</string>
+    <string name="onboarding_next">التالي</string>
+    <string name="onboarding_skip">تخطي</string>
+
+    <!-- Device check screen -->
+    <string name="device_check_title">فحص الجهاز</string>
+    <string name="device_check_subtitle">يحتاج NearMe إلى تفعيل بعض الميزات حتى يعمل بشكل صحيح.</string>
+    <string name="device_check_bluetooth">البلوتوث</string>
+    <string name="device_check_location">خدمات الموقع</string>
+    <string name="device_check_wifi">الواي فاي</string>
+    <string name="device_check_supported">مدعوم</string>
+    <string name="device_check_not_available">غير متوفر</string>
+    <string name="device_check_enabled">مفعّل</string>
+    <string name="device_check_disabled">غير مفعّل</string>
+    <string name="device_check_open_settings">فتح إعدادات الموقع</string>
+    <string name="device_check_continue">متابعة</string>
+    <string name="device_check_privacy_note">لا يقوم NearMe بتتبّع موقعك.</string>
+
+    <!-- Bottom nav -->
+    <string name="nav_discover">استكشاف</string>
+    <string name="nav_chats">المحادثات</string>
+    <string name="nav_settings">الإعدادات</string>
+
+    <!-- Discovery screen -->
+    <string name="discovery_title">NearMe</string>
+    <string name="discovery_searching">جارٍ البحث عن الأجهزة القريبة…</string>
+    <string name="discovery_no_one">لا يوجد أحد قريب حتى الآن</string>
+    <string name="discovery_pull_hint">تأكّد من تشغيل البلوتوث وأن الشخص الآخر يستخدم تطبيق NearMe.</string>
+    <string name="discovery_search_further">بحث أوسع</string>
+    <string name="discovery_extended">موسّع</string>
+    <string name="discovery_nearby">قريب</string>
+    <string name="discovery_searching_extended">جارٍ البحث في نطاق موسّع…</string>
+
+    <!-- Chats list screen -->
+    <string name="chats_title">المحادثات</string>
+    <string name="chats_empty_title">لا توجد محادثات بعد</string>
+    <string name="chats_empty_subtitle">ابدأ محادثة من تبويب الاستكشاف.</string>
+    <string name="chats_online">متصل</string>
+    <string name="chats_offline">غير متصل</string>
+
+    <!-- Chat screen -->
+    <string name="chat_connected">متصل</string>
+    <string name="chat_connecting">جارٍ الاتصال…</string>
+    <string name="chat_disconnected">غير متصل</string>
+    <string name="chat_out_of_range_banner">جارٍ الاتصال بـ %1$s… سيتم إرسال الرسائل عند الاتصال.</string>
+    <string name="chat_input_placeholder">اكتب رسالة</string>
+    <string name="chat_send">إرسال</string>
+    <string name="chat_attach">إرفاق</string>
+    <string name="chat_back">رجوع</string>
+    <string name="chat_status_sending">جارٍ الإرسال</string>
+    <string name="chat_status_sent">تم الإرسال</string>
+    <string name="chat_status_delivered">تم التسليم</string>
+    <string name="chat_file_saved">تم حفظ الملف في المعرض</string>
+    <string name="chat_file_save_failed">تعذّر حفظ الملف</string>
+
+    <!-- Settings screen -->
+    <string name="settings_title">الإعدادات</string>
+    <string name="settings_section_appearance">المظهر</string>
+    <string name="settings_theme">السمة</string>
+    <string name="settings_theme_system">النظام</string>
+    <string name="settings_theme_light">فاتح</string>
+    <string name="settings_theme_dark">داكن</string>
+    <string name="settings_language">اللغة</string>
+    <string name="settings_language_en">English</string>
+    <string name="settings_language_ar">العربية</string>
+    <string name="settings_section_profile">الملف الشخصي</string>
+    <string name="settings_display_name">الاسم الظاهر</string>
+    <string name="settings_short_id">المعرّف القصير</string>
+    <string name="settings_section_about">حول التطبيق</string>
+    <string name="settings_version">الإصدار</string>
+
+    <!-- Common -->
+    <string name="common_cancel">إلغاء</string>
+    <string name="common_ok">حسناً</string>
+    <string name="common_save">حفظ</string>
+    <string name="common_retry">إعادة المحاولة</string>
+    <string name="common_loading">جارٍ التحميل…</string>
+
+    <!-- Notifications -->
+    <string name="notif_service_title">NearMe قيد التشغيل</string>
+    <string name="notif_service_text">جارٍ البحث عن الأشخاص القريبين في الخلفية.</string>
+    <string name="notif_message_title">رسالة جديدة من %1$s</string>
+</resources>
