@@ -5,28 +5,35 @@
 
     <!-- Onboarding -->
     <string name="onboarding_title_1">اكتشف من حولك</string>
-    <string name="onboarding_desc_1">اعثر على المستخدمين القريبين منك في الوقت الحقيقي عبر البلوتوث — دون الحاجة إلى الإنترنت.</string>
+    <string name="onboarding_desc_1">يجد NearMe كل من حولك ممن لديه التطبيق. لا حاجة لرقم هاتف أو حساب.</string>
     <string name="onboarding_title_2">تواصل بدون إنترنت</string>
-    <string name="onboarding_desc_2">أرسل الرسائل والملفات مباشرة بين الأجهزة عبر اتصال خاص من نظير إلى نظير.</string>
-    <string name="onboarding_title_3">بياناتك تبقى معك</string>
-    <string name="onboarding_desc_3">لا خوادم. لا حسابات. لا شيء يغادر جهازك إلا إذا أرسلته بنفسك.</string>
+    <string name="onboarding_desc_2">تنتقل الرسائل مباشرة من هاتفك إلى هاتفهم. بدون راوتر واي فاي، بدون بيانات الجوال، بدون خوادم سحابية.</string>
+    <string name="onboarding_title_3">خصوصية وأمان</string>
+    <string name="onboarding_desc_3">تبقى محادثاتك على هاتفك. لا يُرفع شيء إلى أي مكان. لا حساب، لا تتبّع، لا جمع للبيانات.</string>
+    <string name="onboarding_title_4">شارك الملفات مباشرة</string>
+    <string name="onboarding_desc_4">أرسل الصور والفيديوهات والمستندات لمن حولك. تنتقل الملفات مباشرة من هاتفك إلى هاتفهم دون الحاجة إلى رفعها.</string>
     <string name="onboarding_get_started">ابدأ الآن</string>
     <string name="onboarding_next">التالي</string>
     <string name="onboarding_skip">تخطي</string>
 
     <!-- Device check screen -->
     <string name="device_check_title">فحص الجهاز</string>
-    <string name="device_check_subtitle">يحتاج NearMe إلى تفعيل بعض الميزات حتى يعمل بشكل صحيح.</string>
+    <string name="device_check_subtitle">جارٍ التحقق ممّا يدعمه هاتفك</string>
     <string name="device_check_bluetooth">البلوتوث</string>
+    <string name="device_check_extended_discovery">الاكتشاف الموسّع</string>
+    <string name="device_check_file_transfer">نقل الملفات</string>
     <string name="device_check_location">خدمات الموقع</string>
-    <string name="device_check_wifi">الواي فاي</string>
     <string name="device_check_supported">مدعوم</string>
     <string name="device_check_not_available">غير متوفر</string>
-    <string name="device_check_enabled">مفعّل</string>
-    <string name="device_check_disabled">غير مفعّل</string>
+    <string name="device_check_all_features">جهازك يدعم جميع الميزات</string>
+    <string name="device_check_basic_features">جهازك يدعم الميزات الأساسية</string>
+    <string name="device_check_perm_explain">يحتاج NearMe إلى بعض الأذونات للعثور على من حولك. نحن لا نجمع أو نخزّن بياناتك.</string>
+    <string name="device_check_grant">منح الأذونات</string>
+    <string name="device_check_bt_explain">يرجى تشغيل البلوتوث حتى يتمكّن NearMe من العثور على الأجهزة القريبة.</string>
+    <string name="device_check_bt_open">تشغيل البلوتوث</string>
+    <string name="device_check_loc_explain">يجب تشغيل خدمات الموقع حتى يعمل فحص البلوتوث. لا يقوم NearMe بتتبّع موقعك.</string>
     <string name="device_check_open_settings">فتح إعدادات الموقع</string>
     <string name="device_check_continue">متابعة</string>
-    <string name="device_check_privacy_note">لا يقوم NearMe بتتبّع موقعك.</string>
 
     <!-- Bottom nav -->
     <string name="nav_discover">استكشاف</string>

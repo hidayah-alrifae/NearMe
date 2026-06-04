@@ -26,6 +26,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.res.stringResource
+import com.example.nearme.R
 
 @Composable
 fun OnboardingScreen(onComplete: () -> Unit) {
@@ -34,17 +36,17 @@ fun OnboardingScreen(onComplete: () -> Unit) {
     var currentPage by remember { mutableIntStateOf(0) }
 
     val titles = listOf(
-        "Discover people around you",
-        "Chat without internet",
-        "Private and secure",
-        "Share files directly"
+        stringResource(R.string.onboarding_title_1),
+        stringResource(R.string.onboarding_title_2),
+        stringResource(R.string.onboarding_title_3),
+        stringResource(R.string.onboarding_title_4)
     )
 
     val descriptions = listOf(
-        "NearMe finds anyone nearby who has the app. No phone number or account needed.",
-        "Messages go straight from your phone to theirs. No Wi-Fi router, no mobile data, no cloud servers involved.",
-        "Your conversations stay on your phone. Nothing is uploaded anywhere. No account, no tracking, no data collection.",
-        "Send photos, videos, and documents to people nearby. Files go directly from your phone to theirs with no upload needed."
+        stringResource(R.string.onboarding_desc_1),
+        stringResource(R.string.onboarding_desc_2),
+        stringResource(R.string.onboarding_desc_3),
+        stringResource(R.string.onboarding_desc_4)
     )
 
     Column(
@@ -146,7 +148,10 @@ fun OnboardingScreen(onComplete: () -> Unit) {
         ) {
             if (currentPage < 3) {
                 TextButton(onClick = { finishOnboarding(context, onComplete) }) {
-                    Text("Skip", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(
+                        stringResource(R.string.onboarding_skip),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             } else {
                 Spacer(modifier = Modifier.width(1.dp))
@@ -181,7 +186,10 @@ fun OnboardingScreen(onComplete: () -> Unit) {
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = if (currentPage < 3) "Next" else "Get started",
+                        text = if (currentPage < 3)
+                            stringResource(R.string.onboarding_next)
+                        else
+                            stringResource(R.string.onboarding_get_started),
                         color = Color.White,
                         fontWeight = FontWeight.Medium
                     )

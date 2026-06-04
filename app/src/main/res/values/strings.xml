@@ -5,28 +5,35 @@
 
     <!-- Onboarding -->
     <string name="onboarding_title_1">Discover people around you</string>
-    <string name="onboarding_desc_1">Find nearby users in real time using Bluetooth — no internet needed.</string>
+    <string name="onboarding_desc_1">NearMe finds anyone nearby who has the app. No phone number or account needed.</string>
     <string name="onboarding_title_2">Chat without internet</string>
-    <string name="onboarding_desc_2">Send messages and files directly between phones over a private peer-to-peer link.</string>
-    <string name="onboarding_title_3">Your data stays with you</string>
-    <string name="onboarding_desc_3">No servers. No accounts. Nothing leaves your device unless you send it.</string>
-    <string name="onboarding_get_started">Get Started</string>
+    <string name="onboarding_desc_2">Messages go straight from your phone to theirs. No Wi-Fi router, no mobile data, no cloud servers involved.</string>
+    <string name="onboarding_title_3">Private and secure</string>
+    <string name="onboarding_desc_3">Your conversations stay on your phone. Nothing is uploaded anywhere. No account, no tracking, no data collection.</string>
+    <string name="onboarding_title_4">Share files directly</string>
+    <string name="onboarding_desc_4">Send photos, videos, and documents to people nearby. Files go directly from your phone to theirs with no upload needed.</string>
+    <string name="onboarding_get_started">Get started</string>
     <string name="onboarding_next">Next</string>
     <string name="onboarding_skip">Skip</string>
 
     <!-- Device check screen -->
-    <string name="device_check_title">Device Check</string>
-    <string name="device_check_subtitle">NearMe needs a few things turned on to work properly.</string>
+    <string name="device_check_title">Device check</string>
+    <string name="device_check_subtitle">Checking what your phone supports</string>
     <string name="device_check_bluetooth">Bluetooth</string>
+    <string name="device_check_extended_discovery">Extended discovery</string>
+    <string name="device_check_file_transfer">File transfer</string>
     <string name="device_check_location">Location services</string>
-    <string name="device_check_wifi">Wi-Fi</string>
     <string name="device_check_supported">Supported</string>
     <string name="device_check_not_available">Not available</string>
-    <string name="device_check_enabled">Enabled</string>
-    <string name="device_check_disabled">Disabled</string>
+    <string name="device_check_all_features">Your device supports all features</string>
+    <string name="device_check_basic_features">Your device supports basic features</string>
+    <string name="device_check_perm_explain">NearMe needs a few permissions to find people around you. We never collect or store your data.</string>
+    <string name="device_check_grant">Grant permissions</string>
+    <string name="device_check_bt_explain">Please turn on Bluetooth so NearMe can find nearby phones.</string>
+    <string name="device_check_bt_open">Turn on Bluetooth</string>
+    <string name="device_check_loc_explain">Location must be turned on for Bluetooth scanning to work. NearMe does not track your location.</string>
     <string name="device_check_open_settings">Open Location Settings</string>
     <string name="device_check_continue">Continue</string>
-    <string name="device_check_privacy_note">NearMe does not track your location.</string>
 
     <!-- Bottom nav -->
     <string name="nav_discover">Discover</string>

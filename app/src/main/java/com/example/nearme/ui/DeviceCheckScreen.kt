@@ -33,6 +33,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.compose.ui.res.stringResource
+import com.example.nearme.R
 
 /**
  * Device check + permissions — replaces the old PermissionScreen.
@@ -145,7 +147,7 @@ fun DeviceCheckScreen(onAllReady: () -> Unit) {
         Spacer(modifier = Modifier.height(16.dp))
 
         Text(
-            text = "Device check",
+            text = stringResource(R.string.device_check_title),
             fontSize = 22.sp,
             fontWeight = FontWeight.Medium
         )
@@ -153,7 +155,7 @@ fun DeviceCheckScreen(onAllReady: () -> Unit) {
         Spacer(modifier = Modifier.height(6.dp))
 
         Text(
-            text = "Checking what your phone supports",
+            text = stringResource(R.string.device_check_subtitle),
             fontSize = 14.sp,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center
@@ -163,17 +165,17 @@ fun DeviceCheckScreen(onAllReady: () -> Unit) {
 
         // ── Feature cards (read-only) ────────────────
         FeatureCard(
-            label = "Bluetooth",
+            label = stringResource(R.string.device_check_bluetooth),
             supported = hasBluetooth
         )
         Spacer(modifier = Modifier.height(8.dp))
         FeatureCard(
-            label = "Extended discovery",
+            label = stringResource(R.string.device_check_extended_discovery),
             supported = hasWifiAware
         )
         Spacer(modifier = Modifier.height(8.dp))
         FeatureCard(
-            label = "File transfer",
+            label = stringResource(R.string.device_check_file_transfer),
             supported = hasWifiAware
         )
 
@@ -192,8 +194,10 @@ fun DeviceCheckScreen(onAllReady: () -> Unit) {
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = if (hasWifiAware) "Your device supports all features"
-                    else "Your device supports basic features",
+                    text = if (hasWifiAware)
+                        stringResource(R.string.device_check_all_features)
+                    else
+                        stringResource(R.string.device_check_basic_features),
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Medium,
                     color = Color(0xFF0F6E56)
@@ -207,31 +211,27 @@ fun DeviceCheckScreen(onAllReady: () -> Unit) {
         when {
             !permissionsGranted -> {
                 Text(
-                    text = "NearMe needs a few permissions to find people around you. We never collect or store your data.",
-                    fontSize = 13.sp,
+                    text = stringResource(R.string.device_check_perm_explain),                    fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                     lineHeight = 20.sp
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 GradientButton(
-                    text = "Grant permissions",
-                    onClick = { permissionLauncher.launch(permissions) }
+                    text = stringResource(R.string.device_check_grant),                    onClick = { permissionLauncher.launch(permissions) }
                 )
             }
 
             !bluetoothEnabled -> {
                 Text(
-                    text = "Please turn on Bluetooth so NearMe can find nearby phones.",
-                    fontSize = 13.sp,
+                    text = stringResource(R.string.device_check_bt_explain),                    fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                     lineHeight = 20.sp
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 GradientButton(
-                    text = "Turn on Bluetooth",
-                    onClick = {
+                    text = stringResource(R.string.device_check_bt_open),                    onClick = {
                         bluetoothLauncher.launch(Intent(BluetoothAdapter.ACTION_REQUEST_ENABLE))
                     }
                 )
@@ -239,16 +239,14 @@ fun DeviceCheckScreen(onAllReady: () -> Unit) {
 
             !locationEnabled -> {
                 Text(
-                    text = "Location needs to be on for Bluetooth discovery to work. NearMe does not track your location.",
-                    fontSize = 13.sp,
+                    text = stringResource(R.string.device_check_loc_explain),                    fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     textAlign = TextAlign.Center,
                     lineHeight = 20.sp
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 GradientButton(
-                    text = "Open Location Settings",
-                    onClick = {
+                    text = stringResource(R.string.device_check_open_settings),                    onClick = {
                         locationLauncher.launch(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
                     }
                 )
