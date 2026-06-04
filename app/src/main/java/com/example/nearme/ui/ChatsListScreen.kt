@@ -35,7 +35,11 @@ fun ChatsListScreen(
     val chats by viewModel.chats.collectAsState()
     val unread by rememberTotalUnreadCount()
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+    ) {
 
         // ── Header ───────────────────────────────────
         Row(
