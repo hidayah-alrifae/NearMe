@@ -24,6 +24,9 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.nearme.model.UserProfile
 import kotlin.math.cos
 import kotlin.math.sin
+import androidx.compose.foundation.layout.statusBarsPadding
+import com.example.nearme.util.rememberTotalUnreadCount
+
 
 @Composable
 fun DiscoveryScreen(
@@ -31,6 +34,7 @@ fun DiscoveryScreen(
     onUserClick: (String, String) -> Unit = { _, _ -> },
     onNavigateTab: (NavTab) -> Unit = {}
 ) {
+    val unread by rememberTotalUnreadCount()
     val nearbyUsers by viewModel.nearbyUsers.collectAsState()
     val isSearching by viewModel.isExtendedSearching.collectAsState()
     val wifiAwareAvailable = viewModel.wifiAwareAvailable
@@ -40,7 +44,7 @@ fun DiscoveryScreen(
         onDispose { viewModel.stopDiscovery() }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(modifier = Modifier.fillMaxSize() .statusBarsPadding()) {
 
         // ── Header ───────────────────────────────────
         Row(
@@ -120,7 +124,12 @@ fun DiscoveryScreen(
         }
 
         // ── Bottom nav ───────────────────────────────
-        NearMeBottomNav(selected = NavTab.DISCOVER, onTabSelected = onNavigateTab)
+        // ── Bottom nav ───────────────────────────────────
+        NearMeBottomNav(
+            selected = NavTab.DISCOVER,
+            chatsUnreadCount = unread,
+            onTabSelected = onNavigateTab
+        )
     }
 }
 

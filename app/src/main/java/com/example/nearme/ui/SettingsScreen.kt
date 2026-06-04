@@ -1,6 +1,7 @@
 package com.example.nearme.ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -16,7 +17,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.nearme.util.AppPreferences
 import com.example.nearme.util.LocalAuth
+import com.example.nearme.util.rememberTotalUnreadCount
 
 @Composable
 fun SettingsScreen(onNavigateTab: (NavTab) -> Unit) {
@@ -28,7 +31,15 @@ fun SettingsScreen(onNavigateTab: (NavTab) -> Unit) {
     var editing by remember { mutableStateOf(false) }
     var draftName by remember { mutableStateOf(displayName) }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    val themeMode by AppPreferences.theme.collectAsState()
+    val language  by AppPreferences.language.collectAsState()
+    val unread by rememberTotalUnreadCount()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+    ) {
 
         // ── Header ───────────────────────────────────
         Text(
@@ -58,7 +69,6 @@ fun SettingsScreen(onNavigateTab: (NavTab) -> Unit) {
                     modifier = Modifier.padding(20.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    // Gradient avatar
                     Box(
                         modifier = Modifier
                             .size(72.dp)
@@ -77,45 +87,72 @@ fun SettingsScreen(onNavigateTab: (NavTab) -> Unit) {
                             fontWeight = FontWeight.Medium
                         )
                     }
-
                     Spacer(modifier = Modifier.height(12.dp))
-
-                    Text(
-                        text = displayName,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "#$shortId",
-                        fontSize = 13.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Text(displayName, fontSize = 18.sp, fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface)
+                    Text("#$shortId", fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // ── Account section ──────────────────────
+            // ── Account ──────────────────────────────
             SectionTitle("Account")
-            SettingRow(
-                label = "Display name",
-                value = displayName,
-                onClick = {
-                    draftName = displayName
-                    editing = true
+            SettingRow(label = "Display name", value = displayName) {
+                draftName = displayName; editing = true
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // ── Appearance (Theme) ───────────────────
+            SectionTitle("Appearance")
+            SegmentedRow(
+                label = "Theme",
+                options = listOf("System", "Light", "Dark"),
+                selectedIndex = when (themeMode) {
+                    AppPreferences.ThemeMode.SYSTEM -> 0
+                    AppPreferences.ThemeMode.LIGHT  -> 1
+                    AppPreferences.ThemeMode.DARK   -> 2
+                },
+                onSelect = { idx ->
+                    val mode = when (idx) {
+                        1 -> AppPreferences.ThemeMode.LIGHT
+                        2 -> AppPreferences.ThemeMode.DARK
+                        else -> AppPreferences.ThemeMode.SYSTEM
+                    }
+                    AppPreferences.setTheme(context, mode)
                 }
             )
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // ── About section ────────────────────────
-            SectionTitle("About")
-            SettingRow(label = "Version", value = "1.0", onClick = {})
-            SettingRow(label = "Made by", value = "Hidaya Al-Rifae", onClick = {})
-            SettingRow(label = "University", value = "University of Tripoli", onClick = {})
+            // ── Language ─────────────────────────────
+            SectionTitle("Language")
+            SegmentedRow(
+                label = "Language",
+                options = listOf("English", "العربية"),
+                selectedIndex = if (language == AppPreferences.Language.ARABIC) 1 else 0,
+                onSelect = { idx ->
+                    val lang = if (idx == 1) AppPreferences.Language.ARABIC
+                    else AppPreferences.Language.ENGLISH
+                    AppPreferences.setLanguage(context, lang)
+                }
+            )
+            Text(
+                text = "Switching to العربية mirrors the layout right-to-left. Full text translation will follow.",
+                fontSize = 11.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 4.dp, top = 6.dp)
+            )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // ── About ────────────────────────────────
+            SectionTitle("About")
+            SettingRow(label = "Version", value = "1.0") {}
+
+            Spacer(modifier = Modifier.height(20.dp))
 
             Text(
                 text = "NearMe works fully offline. Your messages and identity never leave your phone.",
@@ -127,8 +164,11 @@ fun SettingsScreen(onNavigateTab: (NavTab) -> Unit) {
             Spacer(modifier = Modifier.height(16.dp))
         }
 
-        // ── Bottom nav ───────────────────────────────
-        NearMeBottomNav(selected = NavTab.SETTINGS, onTabSelected = onNavigateTab)
+        NearMeBottomNav(
+            selected = NavTab.SETTINGS,
+            chatsUnreadCount = unread,
+            onTabSelected = onNavigateTab
+        )
     }
 
     // ── Edit-name dialog ────────────────────────────
@@ -186,17 +226,68 @@ private fun SettingRow(label: String, value: String, onClick: () -> Unit) {
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = label,
-                fontSize = 14.sp,
+            Text(label, fontSize = 14.sp,
                 color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f)
-            )
-            Text(
-                text = value,
-                fontSize = 13.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
+                modifier = Modifier.weight(1f))
+            Text(value, fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** A row of segmented pills (for Theme / Language). */
+@Composable
+private fun SegmentedRow(
+    label: String,
+    options: List<String>,
+    selectedIndex: Int,
+    onSelect: (Int) -> Unit
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = MaterialTheme.colorScheme.surface
+    ) {
+        Column(modifier = Modifier.padding(14.dp)) {
+            Text(label, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface)
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        MaterialTheme.colorScheme.surfaceVariant,
+                        RoundedCornerShape(10.dp)
+                    )
+                    .padding(4.dp)
+            ) {
+                options.forEachIndexed { idx, opt ->
+                    val active = idx == selectedIndex
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(34.dp)
+                            .clickable { onSelect(idx) }
+                            .then(
+                                if (active) Modifier.background(
+                                    brush = Brush.linearGradient(
+                                        listOf(Color(0xFF2E0A6E), Color(0xFF4C1D95), Color(0xFF0369A1))
+                                    ),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) else Modifier
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = opt,
+                            fontSize = 13.sp,
+                            fontWeight = if (active) FontWeight.Medium else FontWeight.Normal,
+                            color = if (active) Color.White
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
         }
     }
 }

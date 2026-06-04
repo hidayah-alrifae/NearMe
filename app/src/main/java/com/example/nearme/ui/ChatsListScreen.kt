@@ -1,5 +1,6 @@
 package com.example.nearme.ui
-
+import com.example.nearme.util.rememberTotalUnreadCount
+import com.example.nearme.util.rememberUnreadFor  // only needed in ChatsListScreen
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -19,6 +20,10 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import java.text.SimpleDateFormat
 import java.util.*
+import com.example.nearme.util.rememberTotalUnreadCount
+import com.example.nearme.util.rememberUnreadFor
+
+
 
 @Composable
 fun ChatsListScreen(
@@ -27,6 +32,7 @@ fun ChatsListScreen(
     onNavigateTab: (NavTab) -> Unit
 ) {
     val chats by viewModel.chats.collectAsState()
+    val unread by rememberTotalUnreadCount()
 
     Column(modifier = Modifier.fillMaxSize()) {
 
@@ -63,7 +69,11 @@ fun ChatsListScreen(
         }
 
         // ── Bottom nav ───────────────────────────────
-        NearMeBottomNav(selected = NavTab.CHATS, onTabSelected = onNavigateTab)
+        NearMeBottomNav(
+            selected = NavTab.CHATS,
+            chatsUnreadCount = unread,
+            onTabSelected = onNavigateTab
+        )
     }
 }
 
@@ -72,6 +82,7 @@ private fun ChatRow(
     chat: ChatSummary,
     onClick: (String, String) -> Unit
 ) {
+    val unreadForThisChat by rememberUnreadFor(chat.conversationId)
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -126,6 +137,23 @@ private fun ChatRow(
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f)
                     )
+                    if (unreadForThisChat > 0) {
+                        Box(
+                            modifier = Modifier
+                                .defaultMinSize(minWidth = 20.dp, minHeight = 20.dp)
+                                .background(Color(0xFFE24B4A), RoundedCornerShape(10.dp))
+                                .padding(horizontal = 6.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = if (unreadForThisChat > 99) "99+" else unreadForThisChat.toString(),
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                    }
                     Text(
                         text = formatTime(chat.timestamp),
                         fontSize = 11.sp,
