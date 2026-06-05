@@ -52,7 +52,7 @@
 
 
 
-    <!-- Add these new entries -->
+
     <string name="discovery_scanning_label">جارٍ البحث</string>
     <string name="discovery_count_one">شخص واحد قريب</string>
     <string name="discovery_count_many">%1$d أشخاص قريبون</string>
@@ -61,6 +61,11 @@
     <string name="discovery_scanning_inner">جارٍ البحث…</string>
     <string name="discovery_extended_idle">بحث موسّع · 30 ثانية</string>
     <string name="discovery_range_hint">~ 30 م</string>
+
+    <!-- Signal strength labels -->
+    <string name="signal_strong">إشارة قوية</string>
+    <string name="signal_good">إشارة جيدة</string>
+    <string name="signal_weak">إشارة ضعيفة</string>
 
     <!-- Chats list screen -->
     <string name="chats_title">المحادثات</string>

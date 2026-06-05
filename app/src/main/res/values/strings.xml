@@ -59,6 +59,11 @@
     <string name="discovery_extended_idle">Extended search · 30s</string>
     <string name="discovery_range_hint">~ 30 m</string>
 
+    <!-- Signal strength labels -->
+    <string name="signal_strong">Strong signal</string>
+    <string name="signal_good">Good signal</string>
+    <string name="signal_weak">Weak signal</string>
+
     <!-- Chats list screen -->
     <string name="chats_title">Chats</string>
     <string name="chats_empty_title">No conversations yet</string>

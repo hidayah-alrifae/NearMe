@@ -435,8 +435,13 @@ private fun DiscoveredUserCard(user: UserProfile, onClick: (String, String) -> U
                         .padding(horizontal = 8.dp, vertical = 4.dp)
                 )
             } else {
+                val signalLabel = when {
+                    user.rssi >= -60 -> stringResource(R.string.signal_strong)
+                    user.rssi >= -75 -> stringResource(R.string.signal_good)
+                    else             -> stringResource(R.string.signal_weak)
+                }
                 Text(
-                    text = "${user.rssi} dBm",
+                    text = signalLabel,
                     fontSize = 11.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
