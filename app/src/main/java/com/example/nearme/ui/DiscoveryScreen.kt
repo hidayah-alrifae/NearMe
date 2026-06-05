@@ -63,7 +63,6 @@ fun DiscoveryScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // Small radar logo to the left of the title (matches the mockup)
                 Box(
                     modifier = Modifier
                         .size(36.dp)
@@ -88,22 +87,17 @@ fun DiscoveryScreen(
             StatusPill(active = true, label = stringResource(R.string.discovery_scanning_label))
         }
 
-// Subtitle: "X people nearby · BLE + Wi-Fi Aware"
-        val subtitleCount = when {
-            nearbyUsers.isEmpty() -> stringResource(R.string.discovery_no_one)
-            nearbyUsers.size == 1 -> stringResource(R.string.discovery_count_one, 1)
-            else -> stringResource(R.string.discovery_count_many, nearbyUsers.size)
+        if (nearbyUsers.isNotEmpty()) {
+            Text(
+                text = if (nearbyUsers.size == 1)
+                    stringResource(R.string.discovery_count_one, 1)
+                else
+                    stringResource(R.string.discovery_count_many, nearbyUsers.size),
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 20.dp)
+            )
         }
-        val subtitleChannels = if (wifiAwareAvailable)
-            stringResource(R.string.discovery_channels_ble_aware)
-        else
-            stringResource(R.string.discovery_channels_ble)
-        Text(
-            text = "$subtitleCount  ·  $subtitleChannels",
-            fontSize = 13.sp,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 20.dp)
-        )
         Spacer(modifier = Modifier.height(8.dp))
 
         // ── Radar ────────────────────────────────────
@@ -117,20 +111,8 @@ fun DiscoveryScreen(
         }
 
         // ── User count + Extended Search ─────────────
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp)
-        ) {
-            Text(
-                text = if (nearbyUsers.isEmpty()) stringResource(R.string.discovery_no_one)
-                else "${nearbyUsers.size} ${if (nearbyUsers.size == 1) "person" else "people"} nearby",
-                fontSize = 14.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            if (wifiAwareAvailable) {
-                Spacer(modifier = Modifier.height(12.dp))
+        if (wifiAwareAvailable) {
+            Box(modifier = Modifier.padding(horizontal = 20.dp)) {
                 ExtendedSearchButton(
                     isSearching = isSearching,
                     onClick = { viewModel.startExtendedSearch() }
