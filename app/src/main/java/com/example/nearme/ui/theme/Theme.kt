@@ -9,6 +9,7 @@ import androidx.compose.runtime.collectAsState
 import com.example.nearme.util.AppPreferences
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.collectAsState
+import androidx.compose.foundation.layout.fillMaxSize
 
 
 private val LightScheme = lightColorScheme(
@@ -38,10 +39,15 @@ fun NearMeTheme(content: @Composable () -> Unit) {
         AppPreferences.ThemeMode.LIGHT  -> false
         AppPreferences.ThemeMode.DARK   -> true
         AppPreferences.ThemeMode.SYSTEM -> isSystemInDarkTheme()
-        else -> isSystemInDarkTheme()
     }
     MaterialTheme(
-        colorScheme = if (useDark) DarkScheme else LightScheme,
-        content = content
-    )
+        colorScheme = if (useDark) DarkScheme else LightScheme
+    ) {
+        androidx.compose.material3.Surface(
+            modifier = androidx.compose.ui.Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background
+        ) {
+            content()
+        }
+    }
 }
