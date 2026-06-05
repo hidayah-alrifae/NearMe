@@ -50,6 +50,18 @@
     <string name="discovery_nearby">قريب</string>
     <string name="discovery_searching_extended">جارٍ البحث في نطاق موسّع…</string>
 
+
+
+    <!-- Add these new entries -->
+    <string name="discovery_scanning_label">جارٍ البحث</string>
+    <string name="discovery_count_one">شخص واحد قريب</string>
+    <string name="discovery_count_many">%1$d أشخاص قريبون</string>
+    <string name="discovery_channels_ble">BLE</string>
+    <string name="discovery_channels_ble_aware">BLE + Wi-Fi Aware</string>
+    <string name="discovery_scanning_inner">جارٍ البحث…</string>
+    <string name="discovery_extended_idle">بحث موسّع · 30 ثانية</string>
+    <string name="discovery_range_hint">~ 30 م</string>
+
     <!-- Chats list screen -->
     <string name="chats_title">المحادثات</string>
     <string name="chats_empty_title">لا توجد محادثات بعد</string>

@@ -28,6 +28,12 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import com.example.nearme.util.rememberTotalUnreadCount
 import androidx.compose.ui.res.stringResource
 import com.example.nearme.R
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
+import androidx.compose.ui.text.drawText
 
 
 @Composable
@@ -56,14 +62,49 @@ fun DiscoveryScreen(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text(
-                text = "NearMe",
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.onPrimaryContainer
-            )
-            StatusPill(active = true, label = "Discovering")
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // Small radar logo to the left of the title (matches the mockup)
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .background(
+                            brush = Brush.linearGradient(
+                                listOf(Color(0xFF2E0A6E), Color(0xFF4C1D95), Color(0xFF0369A1))
+                            ),
+                            shape = CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    RadarLogo(size = 22)
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = stringResource(R.string.discovery_title),
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            StatusPill(active = true, label = stringResource(R.string.discovery_scanning_label))
         }
+
+// Subtitle: "X people nearby · BLE + Wi-Fi Aware"
+        val subtitleCount = when {
+            nearbyUsers.isEmpty() -> stringResource(R.string.discovery_no_one)
+            nearbyUsers.size == 1 -> stringResource(R.string.discovery_count_one, 1)
+            else -> stringResource(R.string.discovery_count_many, nearbyUsers.size)
+        }
+        val subtitleChannels = if (wifiAwareAvailable)
+            stringResource(R.string.discovery_channels_ble_aware)
+        else
+            stringResource(R.string.discovery_channels_ble)
+        Text(
+            text = "$subtitleCount  ·  $subtitleChannels",
+            fontSize = 13.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 20.dp)
+        )
+        Spacer(modifier = Modifier.height(8.dp))
 
         // ── Radar ────────────────────────────────────
         Box(
@@ -108,7 +149,7 @@ fun DiscoveryScreen(
                     verticalArrangement = Arrangement.Center
                 ) {
                     Text(
-                        text = "Scanning…",
+                        text = stringResource(R.string.discovery_scanning_inner),
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -125,7 +166,7 @@ fun DiscoveryScreen(
             }
         }
 
-        // ── Bottom nav ───────────────────────────────
+
         // ── Bottom nav ───────────────────────────────────
         NearMeBottomNav(
             selected = NavTab.DISCOVER,
@@ -169,6 +210,8 @@ private fun StatusPill(active: Boolean, label: String) {
 @Composable
 private fun RadarView(users: List<UserProfile>) {
     val infiniteTransition = rememberInfiniteTransition(label = "radar")
+
+    // Pulsing outer ring (existing)
     val pulse by infiniteTransition.animateFloat(
         initialValue = 0f,
         targetValue = 1f,
@@ -179,16 +222,47 @@ private fun RadarView(users: List<UserProfile>) {
         label = "pulse"
     )
 
-    val primary = MaterialTheme.colorScheme.primary
+    // Rotating sweep angle for the scanning arc (new)
+    val sweep by infiniteTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(3500, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "sweep"
+    )
 
-    Canvas(modifier = Modifier.size(260.dp)) {
+    val primary = MaterialTheme.colorScheme.primary
+    val textMeasurer = rememberTextMeasurer()
+
+    Canvas(modifier = Modifier.size(280.dp)) {
         val c = Offset(size.width / 2, size.height / 2)
         val maxR = size.minDimension / 2
 
         // Three static rings
-        drawCircle(primary.copy(alpha = 0.12f), maxR * 0.95f, c, style = Stroke(1.dp.toPx()))
-        drawCircle(primary.copy(alpha = 0.18f), maxR * 0.65f, c, style = Stroke(1.dp.toPx()))
-        drawCircle(primary.copy(alpha = 0.28f), maxR * 0.35f, c, style = Stroke(1.dp.toPx()))
+        drawCircle(primary.copy(alpha = 0.10f), maxR * 0.95f, c, style = Stroke(1.dp.toPx()))
+        drawCircle(primary.copy(alpha = 0.16f), maxR * 0.65f, c, style = Stroke(1.dp.toPx()))
+        drawCircle(primary.copy(alpha = 0.24f), maxR * 0.35f, c, style = Stroke(1.dp.toPx()))
+
+        // Scanning sweep arc (rotating gradient slice)
+        rotate(degrees = sweep, pivot = c) {
+            drawArc(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        primary.copy(alpha = 0.35f),
+                        primary.copy(alpha = 0.0f)
+                    ),
+                    center = c,
+                    radius = maxR
+                ),
+                startAngle = -90f,
+                sweepAngle = 60f,
+                useCenter = true,
+                topLeft = Offset(c.x - maxR, c.y - maxR),
+                size = Size(maxR * 2, maxR * 2)
+            )
+        }
 
         // Pulsing outer ring
         drawCircle(
@@ -205,17 +279,17 @@ private fun RadarView(users: List<UserProfile>) {
                 start = Offset(c.x - 16f, c.y - 16f),
                 end = Offset(c.x + 16f, c.y + 16f)
             ),
-            radius = 16f,
+            radius = 18f,
             center = c
         )
+        // Inner white dot on the center
+        drawCircle(Color.White.copy(alpha = 0.9f), 5f, c)
 
         // User dots positioned around the radar by signal strength
         users.forEachIndexed { index, user ->
-            // Stronger RSSI (closer to 0) = nearer to center.
-            // RSSI range typically -30 (very close) to -90 (far)
-            val normalized = ((user.rssi + 90).coerceIn(0, 60)) / 60f  // 0..1
-            val distance = maxR * (0.85f - normalized * 0.50f)         // farther for weaker
-            val angle = (index * 47f + 30f) * (Math.PI / 180f)         // spread around
+            val normalized = ((user.rssi + 90).coerceIn(0, 60)) / 60f
+            val distance = maxR * (0.85f - normalized * 0.50f)
+            val angle = (index * 47f + 30f) * (Math.PI / 180f)
             val pos = Offset(
                 c.x + (distance * cos(angle)).toFloat(),
                 c.y + (distance * sin(angle)).toFloat()
@@ -223,10 +297,31 @@ private fun RadarView(users: List<UserProfile>) {
             val color = when (user.status) {
                 "Busy"      -> Color(0xFFEF9F27)
                 "Emergency" -> Color(0xFFE24B4A)
-                else        -> Color(0xFF1D9E75)
+                else        -> Color(0xFF38BDF8)   // sky blue for available
             }
-            drawCircle(color.copy(alpha = 0.25f), 18f, pos)
-            drawCircle(color, 9f, pos)
+            // Soft glow halo
+            drawCircle(color.copy(alpha = 0.20f), 34f, pos)
+            drawCircle(color.copy(alpha = 0.35f), 26f, pos)
+            // Solid dot
+            drawCircle(color, 20f, pos)
+
+            // Initials inside the dot
+            val initials = user.displayName.take(2).uppercase()
+            val layout = textMeasurer.measure(
+                text = AnnotatedString(initials),
+                style = TextStyle(
+                    color = Color.White,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            )
+            drawText(
+                textLayoutResult = layout,
+                topLeft = Offset(
+                    pos.x - layout.size.width / 2f,
+                    pos.y - layout.size.height / 2f
+                )
+            )
         }
     }
 }
@@ -257,8 +352,10 @@ private fun ExtendedSearchButton(isSearching: Boolean, onClick: () -> Unit) {
                 Spacer(modifier = Modifier.width(8.dp))
             }
             Text(
-                text = if (isSearching) stringResource(R.string.discovery_search_further) else "Extended search",
-                color = Color.White,
+                text = if (isSearching)
+                    stringResource(R.string.discovery_searching_extended)
+                else
+                    stringResource(R.string.discovery_extended_idle),                color = Color.White,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium
             )
@@ -344,7 +441,7 @@ private fun DiscoveredUserCard(user: UserProfile, onClick: (String, String) -> U
             // Right side: WiFi Aware tag or RSSI
             if (user.discoverySource == "WIFI_AWARE") {
                 Text(
-                    text = "Extended",
+                    text = stringResource(R.string.discovery_extended),
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.primary,

@@ -50,6 +50,15 @@
     <string name="discovery_nearby">Nearby</string>
     <string name="discovery_searching_extended">Searching extended range…</string>
 
+    <string name="discovery_scanning_label">Scanning</string>
+    <string name="discovery_count_one">%1$d person nearby</string>
+    <string name="discovery_count_many">%1$d people nearby</string>
+    <string name="discovery_channels_ble">BLE</string>
+    <string name="discovery_channels_ble_aware">BLE + Wi-Fi Aware</string>
+    <string name="discovery_scanning_inner">Scanning…</string>
+    <string name="discovery_extended_idle">Extended search · 30s</string>
+    <string name="discovery_range_hint">~ 30 m</string>
+
     <!-- Chats list screen -->
     <string name="chats_title">Chats</string>
     <string name="chats_empty_title">No conversations yet</string>
