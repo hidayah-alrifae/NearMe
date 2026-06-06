@@ -443,7 +443,7 @@ private fun saveFileToDevice(context: android.content.Context, message: Message)
     val mimeType = message.mimeType ?: "application/octet-stream"
     val sourceFile = File(filePath)
     if (!sourceFile.exists()) {
-        Toast.makeText(context, "File not found", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, context.getString(R.string.chat_file_not_found), Toast.LENGTH_SHORT).show()
         return
     }
     try {
@@ -461,14 +461,14 @@ private fun saveFileToDevice(context: android.content.Context, message: Message)
             context.contentResolver.openOutputStream(uri)?.use { out ->
                 sourceFile.inputStream().use { it.copyTo(out) }
             }
-            Toast.makeText(context, "Saved", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.chat_file_saved), Toast.LENGTH_SHORT).show()
         } else {
             val downloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
             val target = File(downloads, message.content)
             sourceFile.copyTo(target, overwrite = true)
-            Toast.makeText(context, "Saved to Downloads", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.chat_file_saved_downloads), Toast.LENGTH_SHORT).show()
         }
     } catch (e: Exception) {
-        Toast.makeText(context, "Save failed: ${e.message}", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, context.getString(R.string.chat_file_save_failed), Toast.LENGTH_SHORT).show()
     }
 }

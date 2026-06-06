@@ -85,6 +85,8 @@
     <string name="chat_status_delivered">Delivered</string>
     <string name="chat_file_saved">File saved to gallery</string>
     <string name="chat_file_save_failed">Could not save file</string>
+    <string name="chat_file_not_found">File not found</string>
+    <string name="chat_file_saved_downloads">Saved to Downloads</string>
 
     <!-- Settings screen -->
     <string name="settings_title">Settings</string>

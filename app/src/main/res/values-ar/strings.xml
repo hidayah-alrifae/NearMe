@@ -88,6 +88,8 @@
     <string name="chat_status_delivered">تم التسليم</string>
     <string name="chat_file_saved">تم حفظ الملف في المعرض</string>
     <string name="chat_file_save_failed">تعذّر حفظ الملف</string>
+    <string name="chat_file_not_found">الملف غير موجود</string>
+    <string name="chat_file_saved_downloads">تم الحفظ في التنزيلات</string>
 
     <!-- Settings screen -->
     <string name="settings_title">الإعدادات</string>

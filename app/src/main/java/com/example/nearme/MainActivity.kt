@@ -30,6 +30,8 @@ class MainActivity : ComponentActivity() {
         val langStr = prefs.getString("language", "ENGLISH") ?: "ENGLISH"
         val locale = if (langStr == "ARABIC") java.util.Locale("ar") else java.util.Locale("en")
 
+        java.util.Locale.setDefault(locale)
+
         val config = android.content.res.Configuration(newBase.resources.configuration)
         config.setLocale(locale)
         super.attachBaseContext(newBase.createConfigurationContext(config))
