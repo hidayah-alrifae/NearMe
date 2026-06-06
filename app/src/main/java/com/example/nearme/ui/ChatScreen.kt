@@ -74,6 +74,9 @@ fun ChatScreen(
     LaunchedEffect(messages.size) {
         UnreadStore.markRead(context, contactShortId)
     }
+    LaunchedEffect(contactShortId, contactName) {
+        com.example.nearme.util.ContactStore.saveName(context, contactShortId, contactName)
+    }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()

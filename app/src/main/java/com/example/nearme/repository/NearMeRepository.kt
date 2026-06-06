@@ -32,6 +32,7 @@ import java.io.File
 import androidx.annotation.RequiresApi
 import android.os.Handler
 import android.os.Looper
+import com.example.nearme.util.ContactStore
 
 class NearMeRepository(private val context: Context) {
 
@@ -131,9 +132,13 @@ class NearMeRepository(private val context: Context) {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+
+        // Look up the sender's saved name; fall back to the shortId if we somehow don't have one
+        val senderName = ContactStore.getName(context, senderShortId) ?: senderShortId
+
         val notification = Notification.Builder(context, MESSAGE_CHANNEL_ID)
-            .setContentTitle("NearMe")
-            .setContentText("New message from $senderShortId")
+            .setContentTitle(context.getString(R.string.notif_message_title, senderName))
+            .setContentText(messageText)
             .setSmallIcon(R.drawable.ic_launcher_foreground)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
@@ -153,6 +158,8 @@ class NearMeRepository(private val context: Context) {
         // Start scanning in LOW_POWER mode — battery friendly for always-on background use
         // LOW_POWER scans less frequently than LOW_LATENCY but uses far less battery
         bleScanner.startScanning(scanMode = "LOW_POWER") { userProfile ->
+            ContactStore.saveName(context, userProfile.shortId, userProfile.displayName)   // ← ADD THIS
+
             usersMap[userProfile.shortId] = userProfile
             _discoveredUsers.value = usersMap.values.toList()
             // If someone is calling us, start NC discovery for them too
@@ -186,6 +193,8 @@ class NearMeRepository(private val context: Context) {
         // so if BLE AND Wi-Fi Aware both see the same person, they merge
         // into one entry instead of duplicating.
         wifiAwareManager.onUserDiscovered = { userProfile ->
+            ContactStore.saveName(context, userProfile.shortId, userProfile.displayName)
+
             usersMap[userProfile.shortId] = userProfile
             _discoveredUsers.value = usersMap.values.toList()
             Log.d("REPO", "Wi-Fi Aware discovered: ${userProfile.displayName}#${userProfile.shortId}")

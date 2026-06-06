@@ -47,10 +47,12 @@ class ChatsListViewModel(application: Application) : AndroidViewModel(applicatio
                             .filter { !it.isFromMe && it.senderName.isNotBlank() }
                             .maxByOrNull { it.timestamp }
                             ?.senderName
+                        val storedName = com.example.nearme.util.ContactStore.getName(getApplication(), convId)
+
 
                         ChatSummary(
                             conversationId = convId,
-                            displayName = onlineUser?.displayName ?: cachedName ?: convId,
+                            displayName = onlineUser?.displayName ?: storedName ?: cachedName ?: convId,
                             lastMessage = preview(last),
                             timestamp = last.timestamp,
                             isOnline = onlineUser != null,
