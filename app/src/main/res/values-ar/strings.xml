@@ -132,4 +132,19 @@
     <string name="delete_message_title">حذف الرسالة؟</string>
     <string name="delete_message_body">ستُحذف هذه الرسالة من هاتفك. ستبقى نسخة الطرف الآخر لديه.</string>
     <string name="common_delete">حذف</string>
+
+    <string name="group_create_title">مجموعة جديدة</string>
+    <string name="group_name_label">اسم المجموعة</string>
+    <string name="group_select_members">إضافة أشخاص قريبين</string>
+    <string name="group_create_button">إنشاء المجموعة</string>
+    <string name="group_members_count">%1$d أعضاء</string>
+    <string name="group_leave">مغادرة</string>
+    <string name="group_leave_title">مغادرة المجموعة؟</string>
+    <string name="group_leave_message">لن تصلك رسائل هذه المجموعة بعد الآن.</string>
+    <string name="group_system_created">تم إنشاء المجموعة</string>
+    <string name="group_system_you_joined">انضممت إلى %1$s</string>
+    <string name="group_system_member_joined">انضم %1$s</string>
+    <string name="group_system_member_left">غادر %1$s</string>
+    <string name="group_system_host_left">غادر المضيف — انتهت المجموعة</string>
+    <string name="group_notif_added">أضافك %1$s إلى مجموعة</string>
 </resources>

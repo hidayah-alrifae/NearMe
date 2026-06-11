@@ -26,12 +26,15 @@ import androidx.compose.ui.res.stringResource
 import com.example.nearme.R
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 
 
 @Composable
 fun ChatsListScreen(
     viewModel: ChatsListViewModel = viewModel(),
     onChatClick: (String, String) -> Unit,
+    onNewGroup: () -> Unit,
     onNavigateTab: (NavTab) -> Unit
 ) {
     val chats by viewModel.chats.collectAsState()
@@ -58,6 +61,16 @@ fun ChatsListScreen(
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
                 modifier = Modifier.weight(1f)
             )
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primaryContainer)
+                    .clickable { onNewGroup() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text("+", fontSize = 24.sp, color = MaterialTheme.colorScheme.onPrimaryContainer)
+            }
         }
 
         // ── Body ─────────────────────────────────────

@@ -85,9 +85,11 @@ fun NearMeApp() {
 
             composable("chats") {
                 ChatsListScreen(
-                    onChatClick = { shortId, displayName ->
-                        navController.navigate("chat/$shortId/$displayName")
+                    onChatClick = { id, name ->
+                        if (id.startsWith("grp_")) navController.navigate("group/$id/$name")
+                        else navController.navigate("chat/$id/$name")
                     },
+                    onNewGroup = { navController.navigate("create_group") },
                     onNavigateTab = { tab -> navController.goToTab(tab) }
                 )
             }
@@ -105,6 +107,29 @@ fun NearMeApp() {
                     viewModel = chatViewModel,
                     contactName = displayName,
                     contactShortId = shortId,
+                    onBack = { navController.popBackStack() }
+                )
+            }
+            composable("create_group") {
+                CreateGroupScreen(
+                    onCreated = { groupId, name ->
+                        navController.navigate("group/$groupId/$name") {
+                            popUpTo("create_group") { inclusive = true }
+                        }
+                    },
+                    onBack = { navController.popBackStack() }
+                )
+            }
+
+            composable("group/{groupId}/{groupName}") { backStackEntry ->
+                val groupId = backStackEntry.arguments?.getString("groupId") ?: ""
+                val groupName = backStackEntry.arguments?.getString("groupName") ?: ""
+                val groupViewModel: GroupChatViewModel = viewModel()
+                LaunchedEffect(groupId) { groupViewModel.openGroup(groupId) }
+                GroupChatScreen(
+                    viewModel = groupViewModel,
+                    groupId = groupId,
+                    groupName = groupName,
                     onBack = { navController.popBackStack() }
                 )
             }

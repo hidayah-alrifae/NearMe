@@ -64,6 +64,9 @@ class NearbyManager(private val context: Context) {
     // NEW: Called when we receive MSG_ACK or FILE_ACK from the other device
     var onAckReceived: ((messageId: String) -> Unit)? = null
 
+    // Raw group protocol payloads (GMSG / GROUP_*)  repository parses and relays them
+    var onGroupPayloadReceived: ((endpointId: String, raw: String) -> Unit)? = null
+
     // ─── File Transfer Tracking ───────────────────────────────────────────
 
     // Tracks incoming file transfers: payloadId → metadata
@@ -138,6 +141,14 @@ class NearbyManager(private val context: Context) {
      * Format: "MSG:<messageId>:<text>"
      * The receiver will send back "MSG_ACK:<messageId>" on receipt.
      */
+
+    /**
+     * Send an arbitrary already-formatted string to one endpoint.
+     * Used by the repository for all group-protocol messages and relays.
+     */
+    fun sendRaw(endpointId: String, payload: String) {
+        connectionsClient.sendPayload(endpointId, Payload.fromBytes(payload.toByteArray()))
+    }
     fun sendMessage(endpointId: String, messageId: String, text: String) {
         val payload = "MSG:$messageId:$text"
         connectionsClient.sendPayload(endpointId, Payload.fromBytes(payload.toByteArray()))
@@ -347,6 +358,15 @@ class NearbyManager(private val context: Context) {
                                 pendingFileTransfers[payloadId] = FileMetadata(fileName, mimeType, messageId)
                                 Log.d(TAG, "File metadata received: $fileName ($mimeType) payloadId=$payloadId messageId=$messageId")
                             }
+                        }
+
+                        text.startsWith("GMSG:") ||
+                                text.startsWith("GMSG_ACK:") ||
+                                text.startsWith("GROUP_INVITE:") ||
+                                text.startsWith("GROUP_JOIN:") ||
+                                text.startsWith("GROUP_ROSTER:") ||
+                                text.startsWith("GROUP_LEAVE:") -> {
+                            onGroupPayloadReceived?.invoke(endpointId, text)
                         }
 
                         else -> {

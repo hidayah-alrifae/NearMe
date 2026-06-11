@@ -32,6 +32,9 @@ import java.io.File
 import androidx.annotation.RequiresApi
 import android.os.Handler
 import android.os.Looper
+import com.example.nearme.util.GroupStore
+import com.example.nearme.util.GroupInfo
+import com.example.nearme.util.GroupMember
 import com.example.nearme.util.ContactStore
 
 class NearMeRepository(private val context: Context) {
@@ -39,9 +42,10 @@ class NearMeRepository(private val context: Context) {
     // ─── State Machine ────────────────────────────────────────────────────────
     enum class RadioState {
         STANDBY,          // BLE + NC advertise + Wi-Fi Aware publish all running
-        NC_CHAT,          // Active NC connection → Wi-Fi Aware paused
+        NC_CHAT,          // Active 1:1 NC connection → Wi-Fi Aware paused
         NAN_CHAT,         // Active Wi-Fi Aware data path → NC advertise paused
-        EXTENDED_SEARCH   // Wi-Fi Aware subscribe ON (manual, temporary)
+        EXTENDED_SEARCH,  // Wi-Fi Aware subscribe ON (manual, temporary)
+        GROUP_CHAT        // Active NC group session (hub or spoke) → Wi-Fi Aware paused
     }
 
     private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -76,6 +80,24 @@ class NearMeRepository(private val context: Context) {
     private var activeConversationId: String? = null
 
     private var activeTransport: String? = null  // "NC" or "NDP"
+    // endpointId → shortId captured at connect time, so onDisconnected (which fires
+    // AFTER NearbyManager already cleared its own map) can still tell who left.
+    private val endpointShortIdCache = mutableMapOf<String, String>()
+
+    // Group invites are processed ONE AT A TIME. Firing all of them at once would
+    // re-create the radio-contention deadlock that breaks NC connections.
+    private data class PendingInvite(val groupId: String, val shortId: String)
+    private val inviteQueue = ArrayDeque<PendingInvite>()
+    private var currentInvite: PendingInvite? = null
+
+    // shortIds currently connected to the hub as group members. When this empties
+    // after a disconnect, the radio returns to STANDBY and Wi-Fi Aware resumes.
+    private val connectedGroupMembers = mutableSetOf<String>()
+
+    init {
+        // Load saved groups as soon as the repository exists (before any UI collects).
+        GroupStore.load(context)
+    }
     private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
     private val wifiAwareManager = WifiAwareManager(context)
@@ -361,22 +383,39 @@ class NearMeRepository(private val context: Context) {
             android.util.Log.d("REPO", "NC connected: $endpointId")
             val myShortId = LocalAuth.getShortId(context)
             val myDisplayName = LocalAuth.getDisplayName(context)
-            bleAdvertiser.startAdvertising(myShortId, myDisplayName, STATUS_AVAILABLE)
-            // Look up WHO we just connected to
             val peerShortId = nearbyManager.getShortIdForEndpoint(endpointId) ?: "unknown"
+            endpointShortIdCache[endpointId] = peerShortId
+
+            val invite = currentInvite
+            if (invite != null) {
+                // Mid-invite: only drop the "Calling" beacon when the RIGHT person
+                // connects — a bystander connecting first must not cut the beacon short.
+                if (invite.shortId == peerShortId) {
+                    bleAdvertiser.startAdvertising(myShortId, myDisplayName, STATUS_AVAILABLE)
+                    onInviteeConnected(endpointId, peerShortId, invite.groupId)
+                }
+            } else {
+                // Normal 1:1 connect — reset the beacon as before.
+                bleAdvertiser.startAdvertising(myShortId, myDisplayName, STATUS_AVAILABLE)
+            }
+
             repositoryScope.launch {
                 _connectedEndpointId.emit(Pair(peerShortId, endpointId))
             }
         }
 
         nearbyManager.onDisconnected = { endpointId ->
-            android.util.Log.d("REPO", "NC disconnected: $endpointId")
+            val peerShortId = endpointShortIdCache.remove(endpointId)
+            android.util.Log.d("REPO", "NC disconnected: $endpointId ($peerShortId)")
 
-            wifiAwareManager.resumePublishing()
-
-            // If we were in NC_CHAT, return to STANDBY
-            if (_radioState.value == RadioState.NC_CHAT) {
-                _radioState.value = RadioState.STANDBY
+            if (_radioState.value == RadioState.GROUP_CHAT) {
+                // Group session: handle roster, DON'T blanket-resume Wi-Fi Aware.
+                handleGroupMemberDisconnect(peerShortId)
+            } else {
+                wifiAwareManager.resumePublishing()
+                if (_radioState.value == RadioState.NC_CHAT) {
+                    _radioState.value = RadioState.STANDBY
+                }
             }
         }
 
@@ -409,6 +448,20 @@ class NearMeRepository(private val context: Context) {
             repositoryScope.launch {
                 messageDao.updateStatus(messageId, "delivered")
                 Log.d("REPO", "Message delivered: $messageId")
+            }
+        }
+        nearbyManager.onDisconnected = { endpointId ->
+            val peerShortId = endpointShortIdCache.remove(endpointId)
+            android.util.Log.d("REPO", "NC disconnected: $endpointId ($peerShortId)")
+
+            if (_radioState.value == RadioState.GROUP_CHAT) {
+                // Group session: handle roster, DON'T blanket-resume Wi-Fi Aware.
+                handleGroupMemberDisconnect(peerShortId)
+            } else {
+                wifiAwareManager.resumePublishing()
+                if (_radioState.value == RadioState.NC_CHAT) {
+                    _radioState.value = RadioState.STANDBY
+                }
             }
         }
 
@@ -624,6 +677,339 @@ class NearMeRepository(private val context: Context) {
     }
     private val ndpFileAssemblies = mutableMapOf<String, NdpFileAssembly>()
 
+    // ─── Group Chat ─────────────────────────────────────────────────────────
+
+    // Strip wire delimiters from names so they can't corrupt the protocol or routes.
+    private fun sanitize(s: String): String =
+        s.replace(":", " ").replace("|", " ").replace(",", " ").replace("/", " ").trim()
+
+    /** Create a group with this device as the hub. Returns the new groupId. */
+    fun createGroup(name: String): String {
+        val myShort = LocalAuth.getShortId(context)
+        val myName = LocalAuth.getDisplayName(context)
+        val groupId = "grp_" + java.util.UUID.randomUUID().toString().take(6)
+        val cleanName = sanitize(name).ifBlank { "Group" }
+
+        GroupStore.upsert(
+            context,
+            GroupInfo(groupId, cleanName, myShort, true, listOf(GroupMember(myShort, myName)))
+        )
+        // Lets the Chats list resolve the group's display name from ContactStore.
+        ContactStore.saveName(context, groupId, cleanName)
+        // First system line, so the group appears in the Chats list immediately.
+        insertSystemMessage(groupId, context.getString(R.string.group_system_created))
+        Log.d("REPO", "Group created: $groupId ($cleanName)")
+        return groupId
+    }
+
+    /** Queue members to invite. Processed strictly one at a time. */
+    @RequiresApi(Build.VERSION_CODES.Q)
+    fun inviteMembersToGroup(groupId: String, shortIds: List<String>) {
+        shortIds.forEach { inviteQueue.addLast(PendingInvite(groupId, it)) }
+        if (currentInvite == null) processNextInvite()
+    }
+
+    @RequiresApi(Build.VERSION_CODES.Q)
+    private fun processNextInvite() {
+        val next = inviteQueue.removeFirstOrNull()
+        currentInvite = next
+        if (next == null) {
+            // Queue drained — drop the Calling beacon and stop discovery.
+            nearbyManager.stopDiscovery()
+            bleAdvertiser.startAdvertising(
+                LocalAuth.getShortId(context), LocalAuth.getDisplayName(context), STATUS_AVAILABLE
+            )
+            return
+        }
+
+        wifiAwareManager.pausePublishing()
+        _radioState.value = RadioState.GROUP_CHAT
+
+        // Already connected (e.g. a bystander connected during a prior invite)? Reuse it.
+        val existing = nearbyManager.getEndpointForShortId(next.shortId)
+        if (existing != null) {
+            onInviteeConnected(existing, next.shortId, next.groupId)
+            scheduleInviteTimeout(next.shortId)
+            return
+        }
+
+        // Reuse the proven BLE "Calling" + targeted NC discovery handshake.
+        bleAdvertiser.startAdvertising(
+            LocalAuth.getShortId(context), LocalAuth.getDisplayName(context), STATUS_CALLING
+        )
+        nearbyManager.startDiscoveryForTarget(next.shortId)
+        scheduleInviteTimeout(next.shortId)
+    }
+
+    @RequiresApi(Build.VERSION_CODES.Q)
+    private fun scheduleInviteTimeout(shortId: String) {
+        mainHandler.postDelayed({
+            if (currentInvite?.shortId == shortId) {
+                Log.w("REPO", "Invite to $shortId timed out — moving on")
+                nearbyManager.stopDiscovery()
+                currentInvite = null
+                processNextInvite()
+            }
+        }, INVITE_TIMEOUT_MS)
+    }
+
+    /** Hub side: invitee's NC link is up → send the GROUP_INVITE control message. */
+    private fun onInviteeConnected(endpointId: String, peerShortId: String, groupId: String) {
+        val group = GroupStore.get(groupId) ?: return
+        val myShort = LocalAuth.getShortId(context)
+        val myName = LocalAuth.getDisplayName(context)
+        nearbyManager.sendRaw(
+            endpointId,
+            "GROUP_INVITE:$groupId:${sanitize(group.groupName)}:$myShort:${sanitize(myName)}"
+        )
+        Log.d("REPO", "Sent GROUP_INVITE for $groupId to $peerShortId")
+        // Roster add happens when GROUP_JOIN comes back.
+    }
+
+    /** Send a text message to a group. Hub fans out; a spoke routes via the hub. */
+    @RequiresApi(Build.VERSION_CODES.Q)
+    fun sendGroupMessage(groupId: String, messageId: String, text: String) {
+        val group = GroupStore.get(groupId) ?: return
+        val myShort = LocalAuth.getShortId(context)
+        val myName = LocalAuth.getDisplayName(context)
+        val gmsg = "GMSG:$groupId:$myShort:${sanitize(myName)}:$messageId:$text"
+
+        if (group.isHub) {
+            fanOutToMembers(group, gmsg, excludeShortId = myShort)
+            // Hub's own message has no network hop — delivered immediately.
+            repositoryScope.launch { messageDao.updateStatus(messageId, "delivered") }
+        } else {
+            val hubEndpoint = nearbyManager.getEndpointForShortId(group.hubShortId)
+            if (hubEndpoint != null) nearbyManager.sendRaw(hubEndpoint, gmsg)
+            else Log.w("REPO", "No hub connection for $groupId — message stays 'sent'")
+        }
+    }
+
+    /** Hub helper: relay a GMSG to every member except the excluded shortId and myself. */
+    private fun fanOutToMembers(group: GroupInfo, gmsg: String, excludeShortId: String) {
+        val myShort = LocalAuth.getShortId(context)
+        group.members.forEach { m ->
+            if (m.shortId == excludeShortId || m.shortId == myShort) return@forEach
+            val ep = nearbyManager.getEndpointForShortId(m.shortId) ?: return@forEach
+            nearbyManager.sendRaw(ep, gmsg)
+        }
+    }
+
+    /** Hub helper: push the current member list to everyone. */
+    private fun broadcastRoster(groupId: String) {
+        val group = GroupStore.get(groupId) ?: return
+        if (!group.isHub) return
+        val rosterStr = group.members.joinToString(",") { "${it.shortId}|${sanitize(it.name)}" }
+        val payload = "GROUP_ROSTER:$groupId:$rosterStr"
+        val myShort = LocalAuth.getShortId(context)
+        group.members.forEach { m ->
+            if (m.shortId == myShort) return@forEach
+            val ep = nearbyManager.getEndpointForShortId(m.shortId) ?: return@forEach
+            nearbyManager.sendRaw(ep, payload)
+        }
+    }
+
+    /** Leave (or, if hub, end) a group and free the radio. */
+    @RequiresApi(Build.VERSION_CODES.Q)
+    fun leaveGroup(groupId: String) {
+        val group = GroupStore.get(groupId) ?: return
+        val myShort = LocalAuth.getShortId(context)
+
+        if (group.isHub) {
+            group.members.forEach { m ->
+                if (m.shortId == myShort) return@forEach
+                val ep = nearbyManager.getEndpointForShortId(m.shortId) ?: return@forEach
+                nearbyManager.sendRaw(ep, "GROUP_LEAVE:$groupId:$myShort")
+                nearbyManager.disconnect(ep)
+                connectedGroupMembers.remove(m.shortId)
+            }
+        } else {
+            nearbyManager.getEndpointForShortId(group.hubShortId)?.let { ep ->
+                nearbyManager.sendRaw(ep, "GROUP_LEAVE:$groupId:$myShort")
+                nearbyManager.disconnect(ep)
+            }
+        }
+
+        GroupStore.delete(context, groupId)
+        if (connectedGroupMembers.isEmpty()) {
+            _radioState.value = RadioState.STANDBY
+            wifiAwareManager.resumePublishing()
+        }
+        Log.d("REPO", "Left group $groupId")
+    }
+
+    private fun insertSystemMessage(groupId: String, text: String) {
+        repositoryScope.launch {
+            messageDao.insertMessage(
+                Message(
+                    conversationId = groupId,
+                    senderName = "",          // empty senderName = system line
+                    content = text,
+                    isFromMe = false,
+                    status = "delivered"
+                )
+            )
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.Q)
+    private fun handleGroupMemberDisconnect(peerShortId: String?) {
+        if (peerShortId == null) return
+        GroupStore.groups.value.forEach { group ->
+            if (group.isHub && group.members.any { it.shortId == peerShortId }) {
+                GroupStore.removeMember(context, group.groupId, peerShortId)
+                connectedGroupMembers.remove(peerShortId)
+                broadcastRoster(group.groupId)
+                insertSystemMessage(
+                    group.groupId,
+                    context.getString(
+                        R.string.group_system_member_left,
+                        ContactStore.getName(context, peerShortId) ?: peerShortId
+                    )
+                )
+            } else if (!group.isHub && peerShortId == group.hubShortId) {
+                insertSystemMessage(group.groupId, context.getString(R.string.group_system_host_left))
+            }
+        }
+        if (connectedGroupMembers.isEmpty()) {
+            _radioState.value = RadioState.STANDBY
+            wifiAwareManager.resumePublishing()
+        }
+    }
+    @RequiresApi(Build.VERSION_CODES.Q)
+    private fun handleGroupPayload(endpointId: String, raw: String) {
+        when {
+            raw.startsWith("GROUP_INVITE:") -> {
+                val p = raw.removePrefix("GROUP_INVITE:").split(":", limit = 4)
+                if (p.size < 4) return
+                val groupId = p[0]; val groupName = p[1]; val hubShort = p[2]; val hubName = p[3]
+                val myShort = LocalAuth.getShortId(context)
+                val myName = LocalAuth.getDisplayName(context)
+
+                // Spoke enters group mode; remember the hub link.
+                wifiAwareManager.pausePublishing()
+                _radioState.value = RadioState.GROUP_CHAT
+                endpointShortIdCache[endpointId] = hubShort
+
+                GroupStore.upsert(
+                    context,
+                    GroupInfo(
+                        groupId, groupName, hubShort, false,
+                        listOf(GroupMember(hubShort, hubName), GroupMember(myShort, myName))
+                    )
+                )
+                ContactStore.saveName(context, groupId, groupName)
+                insertSystemMessage(groupId, context.getString(R.string.group_system_you_joined, groupName))
+
+                // Accept by replying with GROUP_JOIN.
+                nearbyManager.sendRaw(endpointId, "GROUP_JOIN:$groupId:$myShort:${sanitize(myName)}")
+                if (activeConversationId != groupId) {
+                    postMessageNotification(groupId, context.getString(R.string.group_notif_added, hubName))
+                }
+                Log.d("REPO", "Joined group $groupId (hub $hubShort)")
+            }
+
+            raw.startsWith("GROUP_JOIN:") -> {
+                val p = raw.removePrefix("GROUP_JOIN:").split(":", limit = 3)
+                if (p.size < 3) return
+                val groupId = p[0]; val joinerShort = p[1]; val joinerName = p[2]
+                val group = GroupStore.get(groupId) ?: return
+                if (!group.isHub) return
+
+                GroupStore.addMember(context, groupId, GroupMember(joinerShort, joinerName))
+                connectedGroupMembers.add(joinerShort)
+                insertSystemMessage(groupId, context.getString(R.string.group_system_member_joined, joinerName))
+
+                if (currentInvite?.shortId == joinerShort) {
+                    currentInvite = null
+                    processNextInvite()    // advance to the next invite
+                }
+                broadcastRoster(groupId)
+                Log.d("REPO", "$joinerShort joined group $groupId")
+            }
+
+            raw.startsWith("GROUP_ROSTER:") -> {
+                val p = raw.removePrefix("GROUP_ROSTER:").split(":", limit = 2)
+                if (p.size < 2) return
+                val groupId = p[0]
+                val members = p[1].split(",").mapNotNull { entry ->
+                    val pair = entry.split("|", limit = 2)
+                    if (pair.size == 2) GroupMember(pair[0], pair[1]) else null
+                }
+                if (members.isNotEmpty()) GroupStore.setMembers(context, groupId, members)
+            }
+
+            raw.startsWith("GMSG_ACK:") -> {
+                val p = raw.removePrefix("GMSG_ACK:").split(":", limit = 2)
+                if (p.size < 2) return
+                repositoryScope.launch { messageDao.updateStatus(p[1], "delivered") }
+            }
+
+            raw.startsWith("GROUP_LEAVE:") -> {
+                val p = raw.removePrefix("GROUP_LEAVE:").split(":", limit = 2)
+                if (p.size < 2) return
+                val groupId = p[0]; val who = p[1]
+                val group = GroupStore.get(groupId) ?: return
+                if (group.isHub) {
+                    GroupStore.removeMember(context, groupId, who)
+                    connectedGroupMembers.remove(who)
+                    nearbyManager.getEndpointForShortId(who)?.let { nearbyManager.disconnect(it) }
+                    broadcastRoster(groupId)
+                    insertSystemMessage(
+                        groupId,
+                        context.getString(
+                            R.string.group_system_member_left,
+                            ContactStore.getName(context, who) ?: who
+                        )
+                    )
+                } else if (who == group.hubShortId) {
+                    insertSystemMessage(groupId, context.getString(R.string.group_system_host_left))
+                    _radioState.value = RadioState.STANDBY
+                    wifiAwareManager.resumePublishing()
+                }
+            }
+
+            raw.startsWith("GMSG:") -> {
+                val p = raw.removePrefix("GMSG:").split(":", limit = 5)
+                if (p.size < 5) return
+                val groupId = p[0]; val originShort = p[1]
+                val originName = p[2]; val messageId = p[3]; val text = p[4]
+                val group = GroupStore.get(groupId) ?: return
+
+                // Save the incoming message; primary-key clash = duplicate, ignore.
+                repositoryScope.launch {
+                    try {
+                        messageDao.insertMessage(
+                            Message(
+                                id = messageId,
+                                conversationId = groupId,
+                                senderName = originName,
+                                content = text,
+                                isFromMe = false,
+                                status = "delivered"
+                            )
+                        )
+                    } catch (e: Exception) {
+                        return@launch
+                    }
+                    if (activeConversationId != groupId) {
+                        postMessageNotification(groupId, "$originName: $text")
+                    }
+                }
+
+                // Hub relays onward to everyone else and ACKs the author.
+                if (group.isHub) {
+                    fanOutToMembers(group, raw, excludeShortId = originShort)
+                    nearbyManager.getEndpointForShortId(originShort)?.let { ep ->
+                        nearbyManager.sendRaw(ep, "GMSG_ACK:$groupId:$messageId")
+                    }
+                }
+            }
+        }
+    }
+
+
+
     // ─── Singleton ────────────────────────────────────────────────────────────
     companion object {
         private const val MESSAGE_CHANNEL_ID = "nearme_messages"
@@ -631,6 +1017,7 @@ class NearMeRepository(private val context: Context) {
 
         const val STATUS_AVAILABLE: Byte = 0
         const val STATUS_CALLING: Byte = 1  // "I want to connect to someone"
+        private const val INVITE_TIMEOUT_MS = 15_000L  // skip an unreachable invitee after 15s
 
         @Volatile
         private var INSTANCE: NearMeRepository? = null
@@ -642,4 +1029,5 @@ class NearMeRepository(private val context: Context) {
                 }
             }
         }
-    }}
+    }
+}
