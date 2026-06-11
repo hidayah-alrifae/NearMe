@@ -820,6 +820,8 @@ class NearMeRepository(private val context: Context) {
         }
 
         GroupStore.delete(context, groupId)
+        // Also wipe the message history so the group disappears from the Chats list.
+        repositoryScope.launch { messageDao.deleteConversation(groupId) }
         if (connectedGroupMembers.isEmpty()) {
             _radioState.value = RadioState.STANDBY
             wifiAwareManager.resumePublishing()
@@ -937,6 +939,10 @@ class NearMeRepository(private val context: Context) {
                 if (p.size < 2) return
                 val groupId = p[0]; val who = p[1]
                 val group = GroupStore.get(groupId) ?: return
+                // Capture the leaver's name BEFORE removing them from the roster.
+                val leaverName = group.members.find { it.shortId == who }?.name
+                    ?: ContactStore.getName(context, who) ?: who
+
                 if (group.isHub) {
                     GroupStore.removeMember(context, groupId, who)
                     connectedGroupMembers.remove(who)
@@ -944,15 +950,26 @@ class NearMeRepository(private val context: Context) {
                     broadcastRoster(groupId)
                     insertSystemMessage(
                         groupId,
-                        context.getString(
-                            R.string.group_system_member_left,
-                            ContactStore.getName(context, who) ?: who
-                        )
+                        context.getString(R.string.group_system_member_left, leaverName)
                     )
+                    // Tell remaining spokes who left, so they can show "Ahmed left" too.
+                    val myShort = LocalAuth.getShortId(context)
+                    GroupStore.get(groupId)?.members?.forEach { m ->
+                        if (m.shortId == myShort) return@forEach
+                        val ep = nearbyManager.getEndpointForShortId(m.shortId) ?: return@forEach
+                        nearbyManager.sendRaw(ep, raw)
+                    }
                 } else if (who == group.hubShortId) {
                     insertSystemMessage(groupId, context.getString(R.string.group_system_host_left))
                     _radioState.value = RadioState.STANDBY
                     wifiAwareManager.resumePublishing()
+                } else {
+                    // Spoke received notice that another spoke left.
+                    GroupStore.removeMember(context, groupId, who)
+                    insertSystemMessage(
+                        groupId,
+                        context.getString(R.string.group_system_member_left, leaverName)
+                    )
                 }
             }
 

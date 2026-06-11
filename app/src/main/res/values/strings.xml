@@ -142,6 +142,6 @@
     <string name="group_system_you_joined">You joined %1$s</string>
     <string name="group_system_member_joined">%1$s joined</string>
     <string name="group_system_member_left">%1$s left</string>
-    <string name="group_system_host_left">The host left — group ended</string>
+    <string name="group_system_host_left">The host left : group ended</string>
     <string name="group_notif_added">%1$s added you to a group</string>
 </resources>

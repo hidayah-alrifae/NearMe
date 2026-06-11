@@ -145,6 +145,6 @@
     <string name="group_system_you_joined">انضممت إلى %1$s</string>
     <string name="group_system_member_joined">انضم %1$s</string>
     <string name="group_system_member_left">غادر %1$s</string>
-    <string name="group_system_host_left">غادر المضيف — انتهت المجموعة</string>
+    <string name="group_system_host_left">غادر المضيف : انتهت المجموعة</string>
     <string name="group_notif_added">أضافك %1$s إلى مجموعة</string>
 </resources>
