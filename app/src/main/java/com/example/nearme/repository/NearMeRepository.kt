@@ -30,8 +30,6 @@ import com.example.nearme.wifiaware.WifiAwareManager
 import android.util.Log
 import java.io.File
 import androidx.annotation.RequiresApi
-import android.os.Handler
-import android.os.Looper
 import com.example.nearme.util.GroupStore
 import com.example.nearme.util.GroupInfo
 import com.example.nearme.util.GroupMember
@@ -450,20 +448,13 @@ class NearMeRepository(private val context: Context) {
                 Log.d("REPO", "Message delivered: $messageId")
             }
         }
-        nearbyManager.onDisconnected = { endpointId ->
-            val peerShortId = endpointShortIdCache.remove(endpointId)
-            android.util.Log.d("REPO", "NC disconnected: $endpointId ($peerShortId)")
-
-            if (_radioState.value == RadioState.GROUP_CHAT) {
-                // Group session: handle roster, DON'T blanket-resume Wi-Fi Aware.
-                handleGroupMemberDisconnect(peerShortId)
-            } else {
-                wifiAwareManager.resumePublishing()
-                if (_radioState.value == RadioState.NC_CHAT) {
-                    _radioState.value = RadioState.STANDBY
-                }
-            }
+        // Route group-protocol payloads (GROUP_INVITE, GROUP_JOIN, GROUP_ROSTER,
+        // GROUP_LEAVE, GMSG, GMSG_ACK) into the repository's group handler.
+        nearbyManager.onGroupPayloadReceived = { endpointId, raw ->
+            Log.d("REPO", "Group payload received from $endpointId: ${raw.take(60)}")
+            handleGroupPayload(endpointId, raw)
         }
+
 
         // Start always-on advertising so others can reach us
         nearbyManager.startAdvertising(shortId, displayName)
@@ -709,7 +700,6 @@ class NearMeRepository(private val context: Context) {
         if (currentInvite == null) processNextInvite()
     }
 
-    @RequiresApi(Build.VERSION_CODES.Q)
     private fun processNextInvite() {
         val next = inviteQueue.removeFirstOrNull()
         currentInvite = next
@@ -741,7 +731,6 @@ class NearMeRepository(private val context: Context) {
         scheduleInviteTimeout(next.shortId)
     }
 
-    @RequiresApi(Build.VERSION_CODES.Q)
     private fun scheduleInviteTimeout(shortId: String) {
         mainHandler.postDelayed({
             if (currentInvite?.shortId == shortId) {
@@ -852,7 +841,6 @@ class NearMeRepository(private val context: Context) {
         }
     }
 
-    @RequiresApi(Build.VERSION_CODES.Q)
     private fun handleGroupMemberDisconnect(peerShortId: String?) {
         if (peerShortId == null) return
         GroupStore.groups.value.forEach { group ->
@@ -876,7 +864,6 @@ class NearMeRepository(private val context: Context) {
             wifiAwareManager.resumePublishing()
         }
     }
-    @RequiresApi(Build.VERSION_CODES.Q)
     private fun handleGroupPayload(endpointId: String, raw: String) {
         when {
             raw.startsWith("GROUP_INVITE:") -> {
