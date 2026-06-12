@@ -77,4 +77,61 @@ class GroupChatViewModel(application: Application) : AndroidViewModel(applicatio
     fun clearActive() {
         repository.setActiveConversation(null)
     }
+    fun sendFile(uri: android.net.Uri) {
+        val id = groupId ?: return
+        val context = getApplication<Application>()
+
+        viewModelScope.launch {
+            try {
+                val fileName = getFileName(context, uri) ?: "file_${System.currentTimeMillis()}"
+                val mimeType = context.contentResolver.getType(uri) ?: "application/octet-stream"
+
+                val tempFile = java.io.File(context.cacheDir, "send_$fileName")
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    tempFile.outputStream().use { output -> input.copyTo(output) }
+                } ?: return@launch
+
+                if (tempFile.length() > 25 * 1024 * 1024L) {
+                    tempFile.delete(); return@launch
+                }
+
+                val sentDir = java.io.File(context.filesDir, "sent_files").apply { mkdirs() }
+                val permanentFile = java.io.File(sentDir, fileName)
+                tempFile.copyTo(permanentFile, overwrite = true)
+
+                val messageId = System.currentTimeMillis().toString()
+                messageDao.insertMessage(
+                    Message(
+                        id = messageId,
+                        conversationId = id,
+                        senderName = myName,
+                        content = fileName,
+                        isFromMe = true,
+                        status = "sending",
+                        filePath = permanentFile.absolutePath,
+                        mimeType = mimeType
+                    )
+                )
+
+                repository.sendGroupFile(id, tempFile, fileName, mimeType, messageId)
+                messageDao.updateStatus(messageId, "sent")
+
+                kotlinx.coroutines.delay(5000)
+                tempFile.delete()
+            } catch (e: Exception) {
+                android.util.Log.e("GroupVM", "Failed to send group file: ${e.message}")
+            }
+        }
+    }
+
+    private fun getFileName(context: android.content.Context, uri: android.net.Uri): String? {
+        var name: String? = null
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val index = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (index >= 0) name = cursor.getString(index)
+            }
+        }
+        return name
+    }
 }

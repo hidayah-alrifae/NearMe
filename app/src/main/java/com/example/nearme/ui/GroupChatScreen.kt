@@ -24,6 +24,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.nearme.R
 import com.example.nearme.model.Message
+import android.graphics.BitmapFactory
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import java.io.File
 
 @SuppressLint("NewApi")
 @Composable
@@ -39,6 +47,9 @@ fun GroupChatScreen(
     val group by viewModel.group.collectAsState()
     val listState = rememberLazyListState()
     var showLeaveDialog by remember { mutableStateOf(false) }
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri -> uri?.let { viewModel.sendFile(it) } }
 
     DisposableEffect(Unit) { onDispose { viewModel.clearActive() } }
 
@@ -115,6 +126,13 @@ fun GroupChatScreen(
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
+                Box(
+                    modifier = Modifier.size(40.dp).clip(CircleShape)
+                        .background(MaterialTheme.colorScheme.surfaceVariant)
+                        .clickable { filePickerLauncher.launch("*/*") },
+                    contentAlignment = Alignment.Center
+                ) { Text("+", fontSize = 22.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                Spacer(Modifier.width(8.dp))
                 Spacer(Modifier.width(8.dp))
                 Box(
                     modifier = Modifier.size(44.dp).clip(CircleShape)
@@ -176,8 +194,49 @@ private fun GroupMessageBubble(message: Message) {
                     color = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.height(2.dp))
             }
-            Text(message.content, fontSize = 14.sp,
-                color = if (isMe) Color.White else MaterialTheme.colorScheme.onSurface)
+            val mime = message.mimeType
+            if (mime != null && message.filePath != null) {
+                val context = LocalContext.current
+                when {
+                    mime.startsWith("image/") -> {
+                        val bitmap = remember(message.filePath) {
+                            try { BitmapFactory.decodeFile(message.filePath) } catch (_: Exception) { null }
+                        }
+                        if (bitmap != null) {
+                            Image(
+                                bitmap = bitmap.asImageBitmap(),
+                                contentDescription = message.content,
+                                modifier = Modifier.widthIn(max = 240.dp).heightIn(max = 280.dp)
+                                    .clip(RoundedCornerShape(10.dp)),
+                                contentScale = ContentScale.Fit
+                            )
+                        } else {
+                            Text("📷 ${message.content}",
+                                color = if (isMe) Color.White else MaterialTheme.colorScheme.onSurface)
+                        }
+                    }
+                    mime.startsWith("video/") -> {
+                        Text("🎬 ${message.content}",
+                            color = if (isMe) Color.White else MaterialTheme.colorScheme.onSurface)
+                    }
+                    else -> {
+                        Text("📄 ${message.content}",
+                            color = if (isMe) Color.White else MaterialTheme.colorScheme.onSurface)
+                    }
+                }
+                if (!isMe) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = stringResource(R.string.chat_save_to_device),
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable { saveFileToDevice(context, message) }
+                    )
+                }
+            } else {
+                Text(message.content, fontSize = 14.sp,
+                    color = if (isMe) Color.White else MaterialTheme.colorScheme.onSurface)
+            }
         }
     }
 }

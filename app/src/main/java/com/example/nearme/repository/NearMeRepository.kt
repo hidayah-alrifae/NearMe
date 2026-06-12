@@ -92,6 +92,14 @@ class NearMeRepository(private val context: Context) {
     // after a disconnect, the radio returns to STANDBY and Wi-Fi Aware resumes.
     private val connectedGroupMembers = mutableSetOf<String>()
 
+    /** Tracks in-flight group file transfers: messageId → group context. */
+    private data class PendingGroupFile(
+        val groupId: String,
+        val originShort: String,
+        val originName: String
+    )
+    private val pendingGroupFiles = mutableMapOf<String, PendingGroupFile>()
+
     init {
         // Load saved groups as soon as the repository exists (before any UI collects).
         GroupStore.load(context)
@@ -114,7 +122,7 @@ class NearMeRepository(private val context: Context) {
 
     // Tracks whether a Wi-Fi Aware subscribe session is currently active.
     // The UI uses this to show a spinner on the "Search Further" button
-   // and disable it while search is already running.
+    // and disable it while search is already running.
     private val _isExtendedSearching = MutableStateFlow(false)
     val isExtendedSearching: StateFlow<Boolean> = _isExtendedSearching.asStateFlow()
 
@@ -420,24 +428,29 @@ class NearMeRepository(private val context: Context) {
         // When a file finishes transferring, save it as a message in Room
         // Same pattern as onMessageReceived but with filePath and mimeType
         // When a file finishes transferring, save it as a message in Room
-        nearbyManager.onFileReceived = { endpointId, file, fileName, mimeType ->
-            val senderShortId = nearbyManager.getShortIdForEndpoint(endpointId) ?: "unknown"
-            repositoryScope.launch {
-                val message = Message(
-                    conversationId = senderShortId,
-                    senderName = senderShortId,
-                    content = fileName,
-                    isFromMe = false,
-                    status = "delivered",
-                    filePath = file.absolutePath,
-                    mimeType = mimeType
-                )
-                messageDao.insertMessage(message)
-                if (activeConversationId != senderShortId) {
-                    postMessageNotification(senderShortId, "Sent you a file: $fileName")
+        nearbyManager.onFileReceived = { endpointId, file, fileName, mimeType, messageId ->
+            val groupContext = pendingGroupFiles.remove(messageId)
+            if (groupContext != null) {
+                handleGroupFileReceived(endpointId, file, fileName, mimeType, messageId, groupContext)
+            } else {
+                val senderShortId = nearbyManager.getShortIdForEndpoint(endpointId) ?: "unknown"
+                repositoryScope.launch {
+                    val message = Message(
+                        conversationId = senderShortId,
+                        senderName = senderShortId,
+                        content = fileName,
+                        isFromMe = false,
+                        status = "delivered",
+                        filePath = file.absolutePath,
+                        mimeType = mimeType
+                    )
+                    messageDao.insertMessage(message)
+                    if (activeConversationId != senderShortId) {
+                        postMessageNotification(senderShortId, "Sent you a file: $fileName")
+                    }
                 }
+                Log.d("REPO", "File received from $senderShortId: $fileName")
             }
-            Log.d("REPO", "File received from $senderShortId: $fileName")
         }
 
         // When we receive a delivery ACK (MSG_ACK or FILE_ACK),
@@ -515,22 +528,22 @@ class NearMeRepository(private val context: Context) {
     @RequiresApi(Build.VERSION_CODES.Q)
     fun sendChatFile(endpointId: String, file: File, fileName: String, mimeType: String, messageId: String) {
         if (activeTransport == "NDP" && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {            Thread {
-                try {
-                    val fileBytes = file.readBytes()
-                    val chunkSize = 500 * 1024
-                    val totalChunks = (fileBytes.size + chunkSize - 1) / chunkSize
-                    wifiAwareManager.sendOverNdp("FILE_START:$messageId:$fileName:$mimeType:$totalChunks")
-                    for (i in 0 until totalChunks) {
-                        val start = i * chunkSize
-                        val end = minOf(start + chunkSize, fileBytes.size)
-                        val chunk = fileBytes.copyOfRange(start, end)
-                        val base64 = android.util.Base64.encodeToString(chunk, android.util.Base64.NO_WRAP)
-                        wifiAwareManager.sendOverNdp("FILE_CHUNK:$messageId:$i:$base64")
-                    }
-                } catch (e: Exception) {
-                    Log.e("REPO", "NDP file send failed: ${e.message}")
+            try {
+                val fileBytes = file.readBytes()
+                val chunkSize = 500 * 1024
+                val totalChunks = (fileBytes.size + chunkSize - 1) / chunkSize
+                wifiAwareManager.sendOverNdp("FILE_START:$messageId:$fileName:$mimeType:$totalChunks")
+                for (i in 0 until totalChunks) {
+                    val start = i * chunkSize
+                    val end = minOf(start + chunkSize, fileBytes.size)
+                    val chunk = fileBytes.copyOfRange(start, end)
+                    val base64 = android.util.Base64.encodeToString(chunk, android.util.Base64.NO_WRAP)
+                    wifiAwareManager.sendOverNdp("FILE_CHUNK:$messageId:$i:$base64")
                 }
-            }.start()
+            } catch (e: Exception) {
+                Log.e("REPO", "NDP file send failed: ${e.message}")
+            }
+        }.start()
         } else {
             nearbyManager.sendFile(endpointId, file, fileName, mimeType, messageId)
         }
@@ -653,9 +666,9 @@ class NearMeRepository(private val context: Context) {
     }
 
     // ─── NDP File Reassembly ──────────────────────────────────────────────
-   // One entry per in-flight file transfer, keyed by sender's messageId.
-   // Chunks come in over a single TCP stream so they arrive in order, but
-   // we index them anyway so duplicate/out-of-order would still work.
+    // One entry per in-flight file transfer, keyed by sender's messageId.
+    // Chunks come in over a single TCP stream so they arrive in order, but
+    // we index them anyway so duplicate/out-of-order would still work.
     private class NdpFileAssembly(
         val fileName: String,
         val mimeType: String,
@@ -774,6 +787,7 @@ class NearMeRepository(private val context: Context) {
         }
     }
 
+
     /** Hub helper: relay a GMSG to every member except the excluded shortId and myself. */
     private fun fanOutToMembers(group: GroupInfo, gmsg: String, excludeShortId: String) {
         val myShort = LocalAuth.getShortId(context)
@@ -782,6 +796,82 @@ class NearMeRepository(private val context: Context) {
             val ep = nearbyManager.getEndpointForShortId(m.shortId) ?: return@forEach
             nearbyManager.sendRaw(ep, gmsg)
         }
+    }
+    /**
+     * Send a file to a group. Hub fans the file out to all members; spoke
+     * routes the file through the hub. The GFILE announce arrives before the
+     * FILE payload so the receiver knows this file belongs to the group.
+     */
+    @RequiresApi(Build.VERSION_CODES.Q)
+    fun sendGroupFile(groupId: String, file: File, fileName: String, mimeType: String, messageId: String) {
+        val group = GroupStore.get(groupId) ?: return
+        val myShort = LocalAuth.getShortId(context)
+        val myName = LocalAuth.getDisplayName(context)
+        val announce = "GFILE:$groupId:$myShort:${sanitize(myName)}:$messageId:$mimeType:$fileName"
+
+        if (group.isHub) {
+            group.members.forEach { m ->
+                if (m.shortId == myShort) return@forEach
+                val ep = nearbyManager.getEndpointForShortId(m.shortId) ?: return@forEach
+                nearbyManager.sendRaw(ep, announce)
+                nearbyManager.sendFile(ep, file, fileName, mimeType, messageId)
+            }
+            // Hub's own file has no network hop — delivered immediately.
+            repositoryScope.launch { messageDao.updateStatus(messageId, "delivered") }
+        } else {
+            val hubEp = nearbyManager.getEndpointForShortId(group.hubShortId)
+            if (hubEp != null) {
+                nearbyManager.sendRaw(hubEp, announce)
+                nearbyManager.sendFile(hubEp, file, fileName, mimeType, messageId)
+            } else {
+                Log.w("REPO", "No hub connection for $groupId — file stays 'sending'")
+            }
+        }
+    }
+
+    /** Handle a file payload whose announce was already registered as a group file. */
+    private fun handleGroupFileReceived(
+        endpointId: String,
+        file: File,
+        fileName: String,
+        mimeType: String,
+        messageId: String,
+        ctx: PendingGroupFile
+    ) {
+        val group = GroupStore.get(ctx.groupId) ?: return
+        val myShort = LocalAuth.getShortId(context)
+
+        repositoryScope.launch {
+            messageDao.insertMessage(
+                Message(
+                    conversationId = ctx.groupId,
+                    senderName = ctx.originName,
+                    content = fileName,
+                    isFromMe = false,
+                    status = "delivered",
+                    filePath = file.absolutePath,
+                    mimeType = mimeType
+                )
+            )
+            if (activeConversationId != ctx.groupId) {
+                postMessageNotification(ctx.groupId, "${ctx.originName}: $fileName")
+            }
+        }
+
+        if (group.isHub) {
+            // Tell origin we got it (1✓ → 2✓✓) and fan out to other spokes.
+            nearbyManager.getEndpointForShortId(ctx.originShort)?.let {
+                nearbyManager.sendRaw(it, "GFILE_ACK:${ctx.groupId}:$messageId")
+            }
+            val announce = "GFILE:${ctx.groupId}:${ctx.originShort}:${sanitize(ctx.originName)}:$messageId:$mimeType:$fileName"
+            group.members.forEach { m ->
+                if (m.shortId == myShort || m.shortId == ctx.originShort) return@forEach
+                val ep = nearbyManager.getEndpointForShortId(m.shortId) ?: return@forEach
+                nearbyManager.sendRaw(ep, announce)
+                nearbyManager.sendFile(ep, file, fileName, mimeType, messageId)
+            }
+        }
+        Log.d("REPO", "Group file received from ${ctx.originShort}: $fileName (group ${ctx.groupId})")
     }
 
     /** Hub helper: push the current member list to everyone. */
@@ -1008,6 +1098,23 @@ class NearMeRepository(private val context: Context) {
                         nearbyManager.sendRaw(ep, "GMSG_ACK:$groupId:$messageId")
                     }
                 }
+            }
+            raw.startsWith("GFILE:") -> {
+                val p = raw.removePrefix("GFILE:").split(":", limit = 6)
+                if (p.size < 6) return
+                val groupId = p[0]
+                val originShort = p[1]
+                val originName = p[2]
+                val messageId = p[3]
+                // p[4] = mimeType, p[5] = fileName — used when the FILE payload arrives.
+                pendingGroupFiles[messageId] = PendingGroupFile(groupId, originShort, originName)
+                Log.d("REPO", "Group file announced: $messageId from $originShort (group $groupId)")
+            }
+
+            raw.startsWith("GFILE_ACK:") -> {
+                val p = raw.removePrefix("GFILE_ACK:").split(":", limit = 2)
+                if (p.size < 2) return
+                repositoryScope.launch { messageDao.updateStatus(p[1], "delivered") }
             }
         }
     }

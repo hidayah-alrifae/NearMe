@@ -147,4 +147,6 @@
 
     <string name="group_add_title">Add members</string>
     <string name="group_add_button">Add</string>
+
+    <string name="chat_save_to_device">Save to device</string>
 </resources>

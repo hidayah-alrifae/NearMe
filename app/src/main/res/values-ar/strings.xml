@@ -150,4 +150,6 @@
 
     <string name="group_add_title">إضافة أعضاء</string>
     <string name="group_add_button">إضافة</string>
+
+    <string name="chat_save_to_device">حفظ على الجهاز</string>
 </resources>

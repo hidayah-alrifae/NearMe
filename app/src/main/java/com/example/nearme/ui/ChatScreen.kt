@@ -438,7 +438,7 @@ private fun MessageBubble(
 }
 
 // ── File save helper (unchanged from previous version) ──
-private fun saveFileToDevice(context: android.content.Context, message: Message) {
+internal fun saveFileToDevice(context: android.content.Context, message: Message) {
     val filePath = message.filePath ?: return
     val mimeType = message.mimeType ?: "application/octet-stream"
     val sourceFile = File(filePath)

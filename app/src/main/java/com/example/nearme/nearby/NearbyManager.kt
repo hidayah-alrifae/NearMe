@@ -58,7 +58,7 @@ class NearbyManager(private val context: Context) {
     var onDisconnected: ((endpointId: String) -> Unit)? = null
 
     // File transfer callbacks — repository wires these up alongside the text ones
-    var onFileReceived: ((senderEndpointId: String, file: File, fileName: String, mimeType: String) -> Unit)? = null
+    var onFileReceived: ((senderEndpointId: String, file: File, fileName: String, mimeType: String, messageId: String) -> Unit)? = null
     var onFileProgress: ((payloadId: Long, bytesTransferred: Long, totalBytes: Long) -> Unit)? = null
 
     // NEW: Called when we receive MSG_ACK or FILE_ACK from the other device
@@ -365,7 +365,9 @@ class NearbyManager(private val context: Context) {
                                 text.startsWith("GROUP_INVITE:") ||
                                 text.startsWith("GROUP_JOIN:") ||
                                 text.startsWith("GROUP_ROSTER:") ||
-                                text.startsWith("GROUP_LEAVE:") -> {
+                                text.startsWith("GROUP_LEAVE:") ||
+                                text.startsWith("GFILE:") ||
+                                text.startsWith("GFILE_ACK:") -> {
                             onGroupPayloadReceived?.invoke(endpointId, text)
                         }
 
@@ -433,8 +435,7 @@ class NearbyManager(private val context: Context) {
 
                             if (finalFile.exists() && finalFile.length() > 0) {
                                 Log.d(TAG, "File received and saved: ${finalFile.absolutePath} (${finalFile.length()} bytes)")
-                                onFileReceived?.invoke(senderEndpoint, finalFile, metadata.fileName, metadata.mimeType)
-
+                                onFileReceived?.invoke(senderEndpoint, finalFile, metadata.fileName, metadata.mimeType, metadata.messageId)
                                 // NEW: ACK back to sender — "I got the complete file"
                                 sendAck(senderEndpoint, "FILE", metadata.messageId)
                             } else {
