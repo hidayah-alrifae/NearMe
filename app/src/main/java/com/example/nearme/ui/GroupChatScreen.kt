@@ -29,6 +29,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import java.io.File
@@ -103,47 +104,94 @@ fun GroupChatScreen(
             items(messages.reversed(), key = { it.id }) { msg -> GroupMessageBubble(msg) }
         }
 
-        // Composer (text only for now)
-        Surface(modifier = Modifier.fillMaxWidth(),
-            color = MaterialTheme.colorScheme.surface, shadowElevation = 4.dp) {
+        // ── Composer bar ─────────────────────────────
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 4.dp
+        ) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 8.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Attach button
                 Box(
-                    modifier = Modifier.weight(1f)
-                        .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(22.dp))
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(
+                            MaterialTheme.colorScheme.surfaceVariant,
+                            CircleShape
+                        )
+                        .clickable { filePickerLauncher.launch("*/*") },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text("📎", fontSize = 18.sp)
+                }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Text input pill
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .background(
+                            MaterialTheme.colorScheme.surfaceVariant,
+                            RoundedCornerShape(22.dp)
+                        )
                         .padding(horizontal = 14.dp, vertical = 10.dp)
                 ) {
                     if (inputText.isEmpty()) {
-                        Text(stringResource(R.string.chat_input_placeholder), fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            text = stringResource(R.string.chat_input_placeholder),
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                     BasicTextField(
-                        value = inputText, onValueChange = { inputText = it },
-                        textStyle = TextStyle(fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurface),
+                        value = inputText,
+                        onValueChange = { inputText = it },
+                        textStyle = TextStyle(
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 14.sp
+                        ),
                         cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
+
+                Spacer(modifier = Modifier.width(8.dp))
+
+                // Send button — gradient pill
+                val canSend = inputText.isNotBlank()
                 Box(
-                    modifier = Modifier.size(40.dp).clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .clickable { filePickerLauncher.launch("*/*") },
-                    contentAlignment = Alignment.Center
-                ) { Text("+", fontSize = 22.sp, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                Spacer(Modifier.width(8.dp))
-                Spacer(Modifier.width(8.dp))
-                Box(
-                    modifier = Modifier.size(44.dp).clip(CircleShape)
-                        .background(MaterialTheme.colorScheme.primary)
-                        .clickable {
-                            if (inputText.isNotBlank()) {
-                                viewModel.sendMessage(inputText.trim()); inputText = ""
-                            }
+                    modifier = Modifier
+                        .size(44.dp)
+                        .background(
+                            brush = if (canSend) Brush.linearGradient(
+                                listOf(Color(0xFF2E0A6E), Color(0xFF4C1D95), Color(0xFF0369A1))
+                            ) else Brush.linearGradient(
+                                listOf(
+                                    MaterialTheme.colorScheme.surfaceVariant,
+                                    MaterialTheme.colorScheme.surfaceVariant
+                                )
+                            ),
+                            shape = CircleShape
+                        )
+                        .clickable(enabled = canSend) {
+                            viewModel.sendMessage(inputText.trim())
+                            inputText = ""
                         },
                     contentAlignment = Alignment.Center
-                ) { Text("➤", color = Color.White, fontSize = 18.sp) }
+                ) {
+                    Text(
+                        text = "➤",
+                        fontSize = 16.sp,
+                        color = if (canSend) Color.White
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }
