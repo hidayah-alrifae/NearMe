@@ -130,6 +130,15 @@ fun NearMeApp() {
                     viewModel = groupViewModel,
                     groupId = groupId,
                     groupName = groupName,
+                    onBack = { navController.popBackStack() },
+                    onAddMembers = { navController.navigate("add_members/$groupId") }
+                )
+            }
+
+            composable("add_members/{groupId}") { backStackEntry ->
+                val groupId = backStackEntry.arguments?.getString("groupId") ?: ""
+                AddMembersScreen(
+                    groupId = groupId,
                     onBack = { navController.popBackStack() }
                 )
             }

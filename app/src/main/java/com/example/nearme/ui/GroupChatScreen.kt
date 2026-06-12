@@ -31,7 +31,8 @@ fun GroupChatScreen(
     viewModel: GroupChatViewModel,
     groupId: String,
     groupName: String,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    onAddMembers: () -> Unit
 ) {
     var inputText by remember { mutableStateOf("") }
     val messages by viewModel.messages.collectAsState()
@@ -69,6 +70,11 @@ fun GroupChatScreen(
                         color = MaterialTheme.colorScheme.onSurface)
                     Text(stringResource(R.string.group_members_count, memberCount),
                         fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                if (group?.isHub == true) {
+                    Text(stringResource(R.string.group_add_button), fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable { onAddMembers() }.padding(start = 8.dp))
                 }
                 Text(stringResource(R.string.group_leave), fontSize = 13.sp,
                     color = Color(0xFFE24B4A),

@@ -61,6 +61,14 @@ class GroupChatViewModel(application: Application) : AndroidViewModel(applicatio
             repository.sendGroupMessage(id, messageId, text)
         }
     }
+    val nearbyUsers: kotlinx.coroutines.flow.StateFlow<List<com.example.nearme.model.UserProfile>> =
+        repository.discoveredUsers
+
+    fun addMembers(shortIds: List<String>) {
+        val id = groupId ?: return
+        if (shortIds.isEmpty()) return
+        repository.inviteMembersToGroup(id, shortIds)
+    }
 
     fun leaveGroup() {
         groupId?.let { repository.leaveGroup(it) }
