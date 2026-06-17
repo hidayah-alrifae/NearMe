@@ -134,4 +134,10 @@ class GroupChatViewModel(application: Application) : AndroidViewModel(applicatio
         }
         return name
     }
+    /** Deletes a single message from this group (delete for me only). */
+    fun deleteMessage(messageId: String) {
+        viewModelScope.launch {
+            messageDao.deleteMessage(messageId)
+        }
+    }
 }

@@ -33,7 +33,8 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import java.io.File
-
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 @SuppressLint("NewApi")
 @Composable
 fun GroupChatScreen(
@@ -48,6 +49,7 @@ fun GroupChatScreen(
     val group by viewModel.group.collectAsState()
     val listState = rememberLazyListState()
     var showLeaveDialog by remember { mutableStateOf(false) }
+    var messageToDelete by remember { mutableStateOf<Message?>(null) }
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent()
     ) { uri -> uri?.let { viewModel.sendFile(it) } }
@@ -101,7 +103,12 @@ fun GroupChatScreen(
             reverseLayout = true,
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            items(messages.reversed(), key = { it.id }) { msg -> GroupMessageBubble(msg) }
+            items(messages.reversed(), key = { it.id }) { msg ->
+                GroupMessageBubble(
+                    message = msg,
+                    onLongPress = { messageToDelete = it }
+                )
+            }
         }
 
         // ── Composer bar ─────────────────────────────
@@ -213,11 +220,40 @@ fun GroupChatScreen(
             }
         )
     }
+    // ── Delete message confirmation ─────────────────
+    messageToDelete?.let { msg ->
+        AlertDialog(
+            onDismissRequest = { messageToDelete = null },
+            title = { Text(stringResource(R.string.delete_message_title)) },
+            text = { Text(stringResource(R.string.delete_message_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    viewModel.deleteMessage(msg.id)
+                    messageToDelete = null
+                }) {
+                    Text(
+                        stringResource(R.string.common_delete),
+                        color = Color(0xFFE24B4A)
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { messageToDelete = null }) {
+                    Text(stringResource(R.string.common_cancel))
+                }
+            }
+        )
+    }
+
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun GroupMessageBubble(message: Message) {
-    // System line (empty senderName) → centered chip.
+private fun GroupMessageBubble(
+    message: Message,
+    onLongPress: (Message) -> Unit
+) {
+    // System line (empty senderName) → centered chip. Not deletable.
     if (message.senderName.isBlank() && !message.isFromMe) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
             Text(message.content, fontSize = 12.sp,
@@ -233,7 +269,12 @@ private fun GroupMessageBubble(message: Message) {
     Row(Modifier.fillMaxWidth(),
         horizontalArrangement = if (isMe) Arrangement.End else Arrangement.Start) {
         Column(
-            modifier = Modifier.widthIn(max = 280.dp).clip(RoundedCornerShape(14.dp))
+            modifier = Modifier.widthIn(max = 280.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .combinedClickable(
+                    onClick = { },
+                    onLongClick = { onLongPress(message) }
+                )
                 .background(if (isMe) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant)
                 .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
