@@ -53,4 +53,12 @@ object LocalAuth {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().putString(KEY_DISPLAY_NAME, name).apply()
     }
+    /**
+     * Returns true if the user has set a display name at least once.
+     * Used to gate the first-launch SetName screen.
+     */
+    fun hasDisplayName(context: Context): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.contains(KEY_DISPLAY_NAME)
+    }
 }

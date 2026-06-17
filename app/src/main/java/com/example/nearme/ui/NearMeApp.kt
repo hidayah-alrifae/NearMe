@@ -16,7 +16,7 @@ import com.example.nearme.util.AppPreferences
 import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.activity.ComponentActivity
-
+import com.example.nearme.util.LocalAuth
 @SuppressLint("NewApi")
 @Composable
 fun NearMeApp() {
@@ -66,9 +66,28 @@ fun NearMeApp() {
             composable("device_check") {
                 DeviceCheckScreen(
                     onAllReady = {
+                        if (LocalAuth.hasDisplayName(context)) {
+                            // Returning user — name already set, go straight to discovery
+                            NearMeService.start(context)
+                            navController.navigate("discovery") {
+                                popUpTo("device_check") { inclusive = true }
+                            }
+                        } else {
+                            // First launch — pick a name before broadcasting starts
+                            navController.navigate("set_name") {
+                                popUpTo("device_check") { inclusive = true }
+                            }
+                        }
+                    }
+                )
+            }
+
+            composable("set_name") {
+                SetNameScreen(
+                    onSaved = {
                         NearMeService.start(context)
                         navController.navigate("discovery") {
-                            popUpTo("device_check") { inclusive = true }
+                            popUpTo("set_name") { inclusive = true }
                         }
                     }
                 )

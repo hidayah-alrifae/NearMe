@@ -35,6 +35,15 @@
     <string name="device_check_open_settings">Open Location Settings</string>
     <string name="device_check_continue">Continue</string>
 
+    <!-- Set name screen (first launch) -->
+    <string name="set_name_title">What should we call you?</string>
+    <string name="set_name_subtitle">This name is what nearby people will see when they discover you.</string>
+    <string name="set_name_label">Your name</string>
+    <string name="set_name_placeholder">e.g. Hidaya</string>
+    <string name="set_name_id_label">YOUR ID</string>
+    <string name="set_name_id_explain">A short tag that distinguishes you from other people with the same name. It stays with you and can\'t be changed.</string>
+    <string name="set_name_continue">Continue</string>
+
     <!-- Bottom nav -->
     <string name="nav_discover">Discover</string>
     <string name="nav_chats">Chats</string>

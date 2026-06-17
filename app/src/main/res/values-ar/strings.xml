@@ -35,6 +35,15 @@
     <string name="device_check_open_settings">فتح إعدادات الموقع</string>
     <string name="device_check_continue">متابعة</string>
 
+    <!-- Set name screen (first launch) -->
+    <string name="set_name_title">بماذا نناديك؟</string>
+    <string name="set_name_subtitle">هذا الاسم هو ما سيراه الأشخاص القريبون عند اكتشافك.</string>
+    <string name="set_name_label">اسمك</string>
+    <string name="set_name_placeholder">مثال: هداية</string>
+    <string name="set_name_id_label">المعرّف الخاص بك</string>
+    <string name="set_name_id_explain">رمز قصير يميّزك عن الأشخاص الآخرين الذين يحملون نفس الاسم. يبقى معك ولا يمكن تغييره.</string>
+    <string name="set_name_continue">متابعة</string>
+
     <!-- Bottom nav -->
     <string name="nav_discover">استكشاف</string>
     <string name="nav_chats">المحادثات</string>
