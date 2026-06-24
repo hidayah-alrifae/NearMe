@@ -110,7 +110,8 @@ class NearMeRepository(private val context: Context) {
         val messageId: String,
         val fileName: String,
         val mimeType: String,
-        val sizeBytes: Long
+        val sizeBytes: Long,
+        val transport: String  // "NC" or "NDP"
     )
 
     /** Private — sender-side tracking until receiver accepts or rejects. */
@@ -118,7 +119,8 @@ class NearMeRepository(private val context: Context) {
         val endpointId: String,
         val tempFile: File,
         val fileName: String,
-        val mimeType: String
+        val mimeType: String,
+        val transport: String  // "NC" or "NDP"
     )
 
     /** Sender's pending files keyed by messageId. */
@@ -361,6 +363,66 @@ class NearMeRepository(private val context: Context) {
                     val id = messageText.removePrefix("MSG_ACK:")
                     repositoryScope.launch { messageDao.updateStatus(id, "delivered") }
                 }
+                messageText.startsWith("FILE_REQ:") -> {
+                    val parts = messageText.removePrefix("FILE_REQ:").split(":", limit = 4)
+                    if (parts.size == 4) {
+                        val messageId = parts[0]
+                        val fileName = parts[1]
+                        val mimeType = parts[2]
+                        val sizeBytes = parts[3].toLongOrNull() ?: 0L
+                        val req = IncomingFileRequest(
+                            peerShortId, "NDP_$peerShortId", messageId,
+                            fileName, mimeType, sizeBytes, "NDP"
+                        )
+                        pendingIncomingRequests[peerShortId] = req
+                        repositoryScope.launch { _incomingFileRequests.emit(req) }
+                        if (activeConversationId != peerShortId) {
+                            postMessageNotification(peerShortId, context.getString(R.string.notif_file_request, fileName))
+                        }
+                        Log.d("REPO", "NDP file request received: $fileName from $peerShortId")
+                    }
+                }
+
+                messageText.startsWith("FILE_REQ_ACCEPT:") -> {
+                    val messageId = messageText.removePrefix("FILE_REQ_ACCEPT:")
+                    val pending = pendingOutgoingFiles.remove(messageId)
+                    if (pending != null) {
+                        repositoryScope.launch { messageDao.updateStatus(messageId, "sending") }
+                        Thread {
+                            try {
+                                val fileBytes = pending.tempFile.readBytes()
+                                val chunkSize = 500 * 1024
+                                val totalChunks = (fileBytes.size + chunkSize - 1) / chunkSize
+                                wifiAwareManager.sendOverNdp("FILE_START:$messageId:${pending.fileName}:${pending.mimeType}:$totalChunks")
+                                for (i in 0 until totalChunks) {
+                                    val start = i * chunkSize
+                                    val end = minOf(start + chunkSize, fileBytes.size)
+                                    val chunk = fileBytes.copyOfRange(start, end)
+                                    val base64 = android.util.Base64.encodeToString(chunk, android.util.Base64.NO_WRAP)
+                                    wifiAwareManager.sendOverNdp("FILE_CHUNK:$messageId:$i:$base64")
+                                }
+                                repositoryScope.launch { messageDao.updateStatus(messageId, "sent") }
+                                repositoryScope.launch {
+                                    kotlinx.coroutines.delay(10_000)
+                                    pending.tempFile.delete()
+                                }
+                            } catch (e: Exception) {
+                                Log.e("REPO", "NDP file send failed after accept: ${e.message}")
+                            }
+                        }.start()
+                        Log.d("REPO", "NDP file request accepted, sending file: $messageId")
+                    }
+                }
+
+                messageText.startsWith("FILE_REQ_REJECT:") -> {
+                    val messageId = messageText.removePrefix("FILE_REQ_REJECT:")
+                    val pending = pendingOutgoingFiles.remove(messageId)
+                    if (pending != null) {
+                        repositoryScope.launch { messageDao.updateStatus(messageId, "rejected") }
+                        pending.tempFile.delete()
+                        Log.d("REPO", "NDP file request rejected: $messageId")
+                    }
+                }
                 messageText.startsWith("FILE_ACK:") -> {
                     val id = messageText.removePrefix("FILE_ACK:")
                     repositoryScope.launch { messageDao.updateStatus(id, "delivered") }
@@ -541,7 +603,7 @@ class NearMeRepository(private val context: Context) {
         nearbyManager.onFileRequestReceived = { endpointId, messageId, fileName, mimeType, sizeBytes ->
             val senderShortId = nearbyManager.getShortIdForEndpoint(endpointId)
             if (senderShortId != null) {
-                val req = IncomingFileRequest(senderShortId, endpointId, messageId, fileName, mimeType, sizeBytes)
+                val req = IncomingFileRequest(senderShortId, endpointId, messageId, fileName, mimeType, sizeBytes, "NC")
                 pendingIncomingRequests[senderShortId] = req
                 repositoryScope.launch { _incomingFileRequests.emit(req) }
 
@@ -674,6 +736,7 @@ class NearMeRepository(private val context: Context) {
      * Sender side: instead of pushing the file blind, ask first.
      * The actual file send happens later when FILE_REQ_ACCEPT comes back.
      */
+    @RequiresApi(Build.VERSION_CODES.Q)
     fun requestFileTransfer(
         endpointId: String,
         messageId: String,
@@ -681,13 +744,20 @@ class NearMeRepository(private val context: Context) {
         fileName: String,
         mimeType: String
     ) {
-        pendingOutgoingFiles[messageId] = PendingOutgoingFile(endpointId, tempFile, fileName, mimeType)
+        val transport = if (activeTransport == "NDP" && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) "NDP" else "NC"
+        pendingOutgoingFiles[messageId] = PendingOutgoingFile(endpointId, tempFile, fileName, mimeType, transport)
         val size = tempFile.length()
-        nearbyManager.sendRaw(endpointId, "FILE_REQ:$messageId:$fileName:$mimeType:$size")
-        Log.d("REPO", "File request sent: $fileName ($size bytes) messageId=$messageId")
+        val payload = "FILE_REQ:$messageId:$fileName:$mimeType:$size"
+        if (transport == "NDP") {
+            wifiAwareManager.sendOverNdp(payload)
+        } else {
+            nearbyManager.sendRaw(endpointId, payload)
+        }
+        Log.d("REPO", "File request sent ($transport): $fileName ($size bytes) messageId=$messageId")
     }
 
     /** Receiver side: ChatViewModel calls this when user taps Accept or Reject. */
+    @RequiresApi(Build.VERSION_CODES.Q)
     fun respondToFileRequest(messageId: String, accepted: Boolean) {
         val entry = pendingIncomingRequests.entries
             .firstOrNull { it.value.messageId == messageId } ?: return
@@ -695,8 +765,12 @@ class NearMeRepository(private val context: Context) {
         pendingIncomingRequests.remove(entry.key)
 
         val opcode = if (accepted) "FILE_REQ_ACCEPT" else "FILE_REQ_REJECT"
-        nearbyManager.sendRaw(req.endpointId, "$opcode:$messageId")
-        Log.d("REPO", "File request response sent: $opcode for $messageId")
+        if (req.transport == "NDP") {
+            wifiAwareManager.sendOverNdp("$opcode:$messageId")
+        } else {
+            nearbyManager.sendRaw(req.endpointId, "$opcode:$messageId")
+        }
+        Log.d("REPO", "File request response sent ($opcode, ${req.transport}) for $messageId")
     }
     @RequiresApi(Build.VERSION_CODES.Q)
     private fun finalizeNdpFile(messageId: String, assembly: NdpFileAssembly) {
