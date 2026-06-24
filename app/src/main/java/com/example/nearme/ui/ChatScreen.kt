@@ -55,6 +55,7 @@ fun ChatScreen(
     var inputText by remember { mutableStateOf("") }
     val isConnected by viewModel.isConnected.collectAsState()
     val messages by viewModel.messages.collectAsState()
+    val pendingFileRequest by viewModel.pendingIncomingRequest.collectAsState()
     var messageToDelete by remember { mutableStateOf<Message?>(null) }
     val resolvedName = remember(messages, contactName, contactShortId) {
         if (contactName != contactShortId && contactName.isNotBlank()) {
@@ -305,6 +306,37 @@ fun ChatScreen(
             }
         }
     }
+
+    // File transfer approval dialog
+    pendingFileRequest?.let { req ->
+        AlertDialog(
+            onDismissRequest = { /* force an explicit choice — no dismissal */ },
+            title = { Text(stringResource(R.string.file_request_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.file_request_message,
+                        contactName,
+                        req.fileName,
+                        formatFileSize(req.sizeBytes)
+                    )
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { viewModel.acceptFileRequest() }) {
+                    Text(stringResource(R.string.file_request_accept))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.rejectFileRequest() }) {
+                    Text(
+                        stringResource(R.string.file_request_reject),
+                        color = Color(0xFFE24B4A)
+                    )
+                }
+            }
+        )
+    }
 // ── Delete message confirmation ─────────────────
     messageToDelete?.let { msg ->
         AlertDialog(
@@ -329,6 +361,14 @@ fun ChatScreen(
             }
         )
     }
+}
+
+private fun formatFileSize(bytes: Long): String {
+    if (bytes < 1024) return "$bytes B"
+    val kb = bytes / 1024.0
+    if (kb < 1024) return "%.1f KB".format(kb)
+    val mb = kb / 1024.0
+    return "%.1f MB".format(mb)
 }
 
 // ── Message bubble ──────────────────────────────────

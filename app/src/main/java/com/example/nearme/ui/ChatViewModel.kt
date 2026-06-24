@@ -49,6 +49,8 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
     private var currentConversationId: String? = null
 
     private val _isConnected = MutableStateFlow(false)
+    private val _pendingIncomingRequest = MutableStateFlow<NearMeRepository.IncomingFileRequest?>(null)
+    val pendingIncomingRequest: StateFlow<NearMeRepository.IncomingFileRequest?> = _pendingIncomingRequest
     val isConnected: StateFlow<Boolean> = _isConnected
 
     /**
@@ -62,6 +64,17 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
         currentConversationId = conversationId
 
         repository.setActiveConversation(conversationId)
+        // Seed any pending file request for this peer (e.g. if user wasn't in chat when it arrived)
+        _pendingIncomingRequest.value = repository.getPendingFileRequest(conversationId)
+
+// Listen for new file requests while chat is open
+        viewModelScope.launch {
+            repository.incomingFileRequests.collect { req ->
+                if (req.senderShortId == currentConversationId) {
+                    _pendingIncomingRequest.value = req
+                }
+            }
+        }
 
         // Check if already connected to this person (from a previous session)
         val existingEndpoint = repository.getEndpointForShortId(conversationId)
@@ -142,67 +155,62 @@ class ChatViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             try {
-                // Step 1: Get the file name from the content URI
                 val fileName = getFileName(context, uri) ?: "file_${System.currentTimeMillis()}"
-
-                // Step 2: Get MIME type
                 val mimeType = context.contentResolver.getType(uri) ?: "application/octet-stream"
 
-                // Step 3: Copy to a temp file in cache
-                // We can't pass a content:// URI to NC — it needs a real File
+                // Copy URI → temp file (NC needs a real File, not a content URI)
                 val tempFile = File(context.cacheDir, "send_$fileName")
                 context.contentResolver.openInputStream(uri)?.use { input ->
-                    tempFile.outputStream().use { output ->
-                        input.copyTo(output)
-                    }
+                    tempFile.outputStream().use { output -> input.copyTo(output) }
                 } ?: return@launch
 
-                // Step 4: Check file size — limit to 25MB
-                val maxSize = 25 * 1024 * 1024L  // 25 MB
-                if (tempFile.length() > maxSize) {
+                // 25 MB cap
+                if (tempFile.length() > 25 * 1024 * 1024L) {
                     Log.w("ChatVM", "File too large: ${tempFile.length()} bytes")
                     tempFile.delete()
                     return@launch
                 }
 
-                // Step 5: Save the sender's copy to permanent storage
-                val sentDir = File(context.filesDir, "sent_files")
-                sentDir.mkdirs()
+                // Sender's permanent copy (for showing the file in our own chat bubble)
+                val sentDir = File(context.filesDir, "sent_files").apply { mkdirs() }
                 val permanentFile = File(sentDir, fileName)
                 tempFile.copyTo(permanentFile, overwrite = true)
 
-                // Step 6: Generate message ID for this file message
                 val messageId = System.currentTimeMillis().toString()
 
-                // Step 7: Save to Room so it appears in our chat immediately
-                val message = Message(
-                    id = messageId,
-                    conversationId = conversationId,
-                    senderName = displayName,
-                    content = fileName,
-                    isFromMe = true,
-                    status = "sending",  // ⏳ file transfer in progress
-                    filePath = permanentFile.absolutePath,
-                    mimeType = mimeType
+                // Insert with awaiting_approval — flips to "sending" on ACCEPT, "rejected" on REJECT
+                messageDao.insertMessage(
+                    Message(
+                        id = messageId,
+                        conversationId = conversationId,
+                        senderName = displayName,
+                        content = fileName,
+                        isFromMe = true,
+                        status = "awaiting_approval",
+                        filePath = permanentFile.absolutePath,
+                        mimeType = mimeType
+                    )
                 )
-                messageDao.insertMessage(message)
 
-                // Step 8: Send the file via NC (with messageId for ACK tracking)
-                repository.sendChatFile(endpointId, tempFile, fileName, mimeType, messageId)
-                // Step 9: File payload dispatched — update to "sent" (✓)
-                messageDao.updateStatus(messageId, "sent")
-
-                // Clean up temp file after a delay (give NC time to read it)
-                // NC reads the file asynchronously, so we can't delete immediately
-                kotlinx.coroutines.delay(5000)
-                tempFile.delete()
-
+                // Ask permission instead of sending immediately. Repository handles tempFile lifetime.
+                repository.requestFileTransfer(endpointId, messageId, tempFile, fileName, mimeType)
             } catch (e: Exception) {
-                Log.e("ChatVM", "Failed to send file: ${e.message}")
+                Log.e("ChatVM", "Failed to request file transfer: ${e.message}")
             }
         }
     }
 
+    fun acceptFileRequest() {
+        val req = _pendingIncomingRequest.value ?: return
+        repository.respondToFileRequest(req.messageId, accepted = true)
+        _pendingIncomingRequest.value = null
+    }
+
+    fun rejectFileRequest() {
+        val req = _pendingIncomingRequest.value ?: return
+        repository.respondToFileRequest(req.messageId, accepted = false)
+        _pendingIncomingRequest.value = null
+    }
     /**
      * Extracts the display name of a file from a content:// URI.
      * Uses the ContentResolver to query the OpenableColumns.DISPLAY_NAME column.

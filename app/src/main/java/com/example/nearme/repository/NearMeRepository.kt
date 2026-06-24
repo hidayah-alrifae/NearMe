@@ -103,6 +103,33 @@ class NearMeRepository(private val context: Context) {
         val originShort: String,
         val originName: String
     )
+    /** Public — exposed to ViewModel for the approval dialog. */
+    data class IncomingFileRequest(
+        val senderShortId: String,
+        val endpointId: String,
+        val messageId: String,
+        val fileName: String,
+        val mimeType: String,
+        val sizeBytes: Long
+    )
+
+    /** Private — sender-side tracking until receiver accepts or rejects. */
+    private data class PendingOutgoingFile(
+        val endpointId: String,
+        val tempFile: File,
+        val fileName: String,
+        val mimeType: String
+    )
+
+    /** Sender's pending files keyed by messageId. */
+    private val pendingOutgoingFiles = mutableMapOf<String, PendingOutgoingFile>()
+
+    /** Receiver's pending requests keyed by senderShortId so chat can seed on open. */
+    private val pendingIncomingRequests = mutableMapOf<String, IncomingFileRequest>()
+
+    /** Live stream of new file requests for the chat UI to react to. */
+    private val _incomingFileRequests = MutableSharedFlow<IncomingFileRequest>(extraBufferCapacity = 16)
+    val incomingFileRequests: SharedFlow<IncomingFileRequest> = _incomingFileRequests.asSharedFlow()
     private val pendingGroupFiles = mutableMapOf<String, PendingGroupFile>()
 
     init {
@@ -510,6 +537,48 @@ class NearMeRepository(private val context: Context) {
                 Log.d("REPO", "Message delivered: $messageId")
             }
         }
+        // Receiver side — incoming file request from peer
+        nearbyManager.onFileRequestReceived = { endpointId, messageId, fileName, mimeType, sizeBytes ->
+            val senderShortId = nearbyManager.getShortIdForEndpoint(endpointId)
+            if (senderShortId != null) {
+                val req = IncomingFileRequest(senderShortId, endpointId, messageId, fileName, mimeType, sizeBytes)
+                pendingIncomingRequests[senderShortId] = req
+                repositoryScope.launch { _incomingFileRequests.emit(req) }
+
+                // Notify if user is not currently in this chat
+                if (activeConversationId != senderShortId) {
+                    postMessageNotification(
+                        senderShortId,
+                        context.getString(R.string.notif_file_request, fileName)
+                    )
+                }
+                Log.d("REPO", "File request received: $fileName from $senderShortId")
+            }
+        }
+
+// Sender side — receiver's accept/reject came back
+        nearbyManager.onFileRequestResponse = { messageId, accepted ->
+            val pending = pendingOutgoingFiles.remove(messageId)
+            if (pending != null) {
+                if (accepted) {
+                    repositoryScope.launch { messageDao.updateStatus(messageId, "sending") }
+                    nearbyManager.sendFile(
+                        pending.endpointId, pending.tempFile,
+                        pending.fileName, pending.mimeType, messageId
+                    )
+                    // Give NC time to read the temp file before we delete it
+                    repositoryScope.launch {
+                        kotlinx.coroutines.delay(10_000)
+                        pending.tempFile.delete()
+                    }
+                    Log.d("REPO", "File request accepted, sending file: $messageId")
+                } else {
+                    repositoryScope.launch { messageDao.updateStatus(messageId, "rejected") }
+                    pending.tempFile.delete()
+                    Log.d("REPO", "File request rejected: $messageId")
+                }
+            }
+        }
         // Route group-protocol payloads (GROUP_INVITE, GROUP_JOIN, GROUP_ROSTER,
         // GROUP_LEAVE, GMSG, GMSG_ACK) into the repository's group handler.
         nearbyManager.onGroupPayloadReceived = { endpointId, raw ->
@@ -596,6 +665,38 @@ class NearMeRepository(private val context: Context) {
         } else {
             nearbyManager.sendFile(endpointId, file, fileName, mimeType, messageId)
         }
+    }
+    /** Called by ChatViewModel when chat opens — returns any pending request for this peer, or null. */
+    fun getPendingFileRequest(senderShortId: String): IncomingFileRequest? =
+        pendingIncomingRequests[senderShortId]
+
+    /**
+     * Sender side: instead of pushing the file blind, ask first.
+     * The actual file send happens later when FILE_REQ_ACCEPT comes back.
+     */
+    fun requestFileTransfer(
+        endpointId: String,
+        messageId: String,
+        tempFile: File,
+        fileName: String,
+        mimeType: String
+    ) {
+        pendingOutgoingFiles[messageId] = PendingOutgoingFile(endpointId, tempFile, fileName, mimeType)
+        val size = tempFile.length()
+        nearbyManager.sendRaw(endpointId, "FILE_REQ:$messageId:$fileName:$mimeType:$size")
+        Log.d("REPO", "File request sent: $fileName ($size bytes) messageId=$messageId")
+    }
+
+    /** Receiver side: ChatViewModel calls this when user taps Accept or Reject. */
+    fun respondToFileRequest(messageId: String, accepted: Boolean) {
+        val entry = pendingIncomingRequests.entries
+            .firstOrNull { it.value.messageId == messageId } ?: return
+        val req = entry.value
+        pendingIncomingRequests.remove(entry.key)
+
+        val opcode = if (accepted) "FILE_REQ_ACCEPT" else "FILE_REQ_REJECT"
+        nearbyManager.sendRaw(req.endpointId, "$opcode:$messageId")
+        Log.d("REPO", "File request response sent: $opcode for $messageId")
     }
     @RequiresApi(Build.VERSION_CODES.Q)
     private fun finalizeNdpFile(messageId: String, assembly: NdpFileAssembly) {

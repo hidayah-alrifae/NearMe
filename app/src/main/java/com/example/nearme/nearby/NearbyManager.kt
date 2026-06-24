@@ -64,6 +64,10 @@ class NearbyManager(private val context: Context) {
     // NEW: Called when we receive MSG_ACK or FILE_ACK from the other device
     var onAckReceived: ((messageId: String) -> Unit)? = null
 
+    // File approval handshake (1:1 NC only)
+    var onFileRequestReceived: ((senderEndpointId: String, messageId: String, fileName: String, mimeType: String, sizeBytes: Long) -> Unit)? = null
+    var onFileRequestResponse: ((messageId: String, accepted: Boolean) -> Unit)? = null
+
     // Raw group protocol payloads (GMSG / GROUP_*)  repository parses and relays them
     var onGroupPayloadReceived: ((endpointId: String, raw: String) -> Unit)? = null
 
@@ -345,6 +349,27 @@ class NearbyManager(private val context: Context) {
                         text.startsWith("FILE_ACK:") -> {
                             val messageId = text.removePrefix("FILE_ACK:")
                             onAckReceived?.invoke(messageId)
+                        }
+                        text.startsWith("FILE_REQ:") -> {
+                            // Format: FILE_REQ:<messageId>:<fileName>:<mimeType>:<sizeBytes>
+                            val parts = text.removePrefix("FILE_REQ:").split(":", limit = 4)
+                            if (parts.size == 4) {
+                                val messageId = parts[0]
+                                val fileName = parts[1]
+                                val mimeType = parts[2]
+                                val sizeBytes = parts[3].toLongOrNull() ?: 0L
+                                onFileRequestReceived?.invoke(endpointId, messageId, fileName, mimeType, sizeBytes)
+                            }
+                        }
+
+                        text.startsWith("FILE_REQ_ACCEPT:") -> {
+                            val messageId = text.removePrefix("FILE_REQ_ACCEPT:")
+                            onFileRequestResponse?.invoke(messageId, true)
+                        }
+
+                        text.startsWith("FILE_REQ_REJECT:") -> {
+                            val messageId = text.removePrefix("FILE_REQ_REJECT:")
+                            onFileRequestResponse?.invoke(messageId, false)
                         }
 
                         text.startsWith("FILE_META:") -> {

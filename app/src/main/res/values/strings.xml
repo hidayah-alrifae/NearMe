@@ -158,4 +158,10 @@
     <string name="group_add_button">Add</string>
 
     <string name="chat_save_to_device">Save to device</string>
+
+    <string name="file_request_title">File transfer request</string>
+    <string name="file_request_message">%1$s wants to send you %2$s (%3$s). Accept?</string>
+    <string name="file_request_accept">Accept</string>
+    <string name="file_request_reject">Reject</string>
+    <string name="notif_file_request">Wants to send: %1$s</string>
 </resources>

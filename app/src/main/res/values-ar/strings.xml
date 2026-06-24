@@ -161,4 +161,10 @@
     <string name="group_add_button">إضافة</string>
 
     <string name="chat_save_to_device">حفظ على الجهاز</string>
+
+    <string name="file_request_title">طلب إرسال ملف</string>
+    <string name="file_request_message">يريد %1$s إرسال %2$s (%3$s) إليك. هل تقبل؟</string>
+    <string name="file_request_accept">قبول</string>
+    <string name="file_request_reject">رفض</string>
+    <string name="notif_file_request">يريد إرسال: %1$s</string>
 </resources>
