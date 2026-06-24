@@ -34,6 +34,11 @@ import com.example.nearme.util.GroupStore
 import com.example.nearme.util.GroupInfo
 import com.example.nearme.util.GroupMember
 import com.example.nearme.util.ContactStore
+import android.media.AudioAttributes
+import android.media.RingtoneManager
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 
 class NearMeRepository(private val context: Context) {
 
@@ -140,6 +145,18 @@ class NearMeRepository(private val context: Context) {
     }
     fun createMessageNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // INSTANT_MESSAGE usage tells Android this is a chat ping —
+            // affects how the system prioritizes the sound across streams.
+            val audioAttributes = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_NOTIFICATION_COMMUNICATION_INSTANT)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                .build()
+
+            val soundUri = RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION)
+
+            // Pattern: wait 0ms, buzz 300ms, wait 150ms, buzz 300ms. Two short pulses = "message" feel.
+            val vibrationPattern = longArrayOf(0, 300, 150, 300)
+
             val channel = NotificationChannel(
                 MESSAGE_CHANNEL_ID,
                 "NearMe Messages",
@@ -147,6 +164,12 @@ class NearMeRepository(private val context: Context) {
             ).apply {
                 description = "Notifications for incoming messages"
                 enableVibration(true)
+                this.vibrationPattern = vibrationPattern
+                setSound(soundUri, audioAttributes)
+                // bypassDnd needs the user to grant Notification Policy access in Settings
+                // to actually take effect — otherwise it's a hint that's silently ignored.
+                setBypassDnd(true)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
             notificationManager.createNotificationChannel(channel)
         }
@@ -161,7 +184,6 @@ class NearMeRepository(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Look up the sender's saved name; fall back to the shortId if we somehow don't have one
         val senderName = ContactStore.getName(context, senderShortId) ?: senderShortId
 
         val notification = Notification.Builder(context, MESSAGE_CHANNEL_ID)
@@ -175,6 +197,33 @@ class NearMeRepository(private val context: Context) {
             senderShortId.hashCode() + MESSAGE_NOTIFICATION_BASE_ID,
             notification
         )
+
+        // Manual vibrator call — the Vibrator API doesn't respect the ringer's silent
+        // mode, so this fires even when the channel's own sound/vibration is suppressed.
+        triggerVibration()
+    }
+
+    /**
+     * Manually vibrates the phone with a short two-pulse pattern.
+     * Works even when the phone is in silent mode.
+     */
+    private fun triggerVibration() {
+        try {
+            val vibrator: Vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val vm = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
+                vm.defaultVibrator
+            } else {
+                @Suppress("DEPRECATION")
+                context.getSystemService(Context.VIBRATOR_SERVICE) as Vibrator
+            }
+            if (!vibrator.hasVibrator()) return
+
+            // -1 = play once, no repeat
+            val effect = VibrationEffect.createWaveform(longArrayOf(0, 300, 150, 300), -1)
+            vibrator.vibrate(effect)
+        } catch (e: Exception) {
+            Log.e("REPO", "Vibration failed: ${e.message}")
+        }
     }
     fun startBle() {
         val shortId = LocalAuth.getShortId(context)
